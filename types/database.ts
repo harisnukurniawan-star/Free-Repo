@@ -1,4 +1,4 @@
-export type DatabaseMode = "snapshot" | "direct";
+export type DatabaseMode = "snapshot" | "direct" | "demo";
 
 export type DbOverview = {
   connected: boolean;
