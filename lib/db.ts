@@ -1,9 +1,14 @@
 import mysql, { type Pool } from "mysql2/promise";
 
+export type DatabaseMode = "demo" | "direct" | "snapshot";
+
 let pool: Pool | null = null;
 
-export function databaseMode(): "demo" | "direct" {
-  return process.env.CONTROL_ROOM_DB_MODE === "direct" ? "direct" : "demo";
+export function databaseMode(): DatabaseMode {
+  const mode = process.env.CONTROL_ROOM_DB_MODE?.trim().toLowerCase();
+  if (mode === "direct") return "direct";
+  if (mode === "snapshot") return "snapshot";
+  return "demo";
 }
 
 export function getPool(): Pool {

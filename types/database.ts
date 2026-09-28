@@ -1,6 +1,6 @@
 export type DbOverview = {
   connected: boolean;
-  mode: "demo" | "direct";
+  mode: "demo" | "direct" | "snapshot";
   latencyMs: number | null;
   databaseName: string;
   tableCount: number;
