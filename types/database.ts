@@ -1,12 +1,59 @@
-export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
-export type Database = { public: { Tables: {
-profiles:{Row:{id:string;full_name:string;role:string;active:boolean;created_at:string;updated_at:string};Insert:{id:string;full_name:string;role?:string;active?:boolean;created_at?:string;updated_at?:string};Update:Record<string,unknown>;Relationships:[]};
-employees:{Row:{id:string;full_name:string;profile_id:string|null;active:boolean;display_order:number;created_at:string;updated_at:string};Insert:{id?:string;full_name:string;profile_id?:string|null;active?:boolean;display_order?:number};Update:Record<string,unknown>;Relationships:[]};
-weekly_periods:{Row:{id:string;week_start:string;week_end:string;label:string;status:string;created_at:string;updated_at:string};Insert:{id?:string;week_start:string;week_end:string;label:string;status?:string};Update:Record<string,unknown>;Relationships:[]};
-tasks:{Row:{id:string;period_id:string;title:string;description:string|null;priority:string;weight:number;due_at:string|null;assigned_by:string|null;assigned_to:string;status:string;created_at:string;updated_at:string};Insert:{id?:string;period_id:string;title:string;description?:string|null;priority?:string;weight?:number;due_at?:string|null;assigned_by?:string|null;assigned_to:string;status?:string};Update:Record<string,unknown>;Relationships:[]};
-task_claims:{Row:{id:string;task_id:string;employee_id:string;realization_summary:string;completion_percent:number;submitted_at:string;version:number;created_at:string;updated_at:string};Insert:{id?:string;task_id:string;employee_id:string;realization_summary:string;completion_percent?:number;submitted_at?:string;version?:number};Update:Record<string,unknown>;Relationships:[]};
-evidence_files:{Row:{id:string;claim_id:string;storage_path:string;file_name:string;mime_type:string|null;file_size:number|null;uploaded_at:string};Insert:{id?:string;claim_id:string;storage_path:string;file_name:string;mime_type?:string|null;file_size?:number|null};Update:Record<string,unknown>;Relationships:[]};
-task_evaluations:{Row:{id:string;claim_id:string;evaluator_id:string|null;score:number|null;decision:string;feedback:string|null;evaluated_at:string;created_at:string;updated_at:string};Insert:{id?:string;claim_id:string;evaluator_id?:string|null;score?:number|null;decision:string;feedback?:string|null;evaluated_at?:string};Update:Record<string,unknown>;Relationships:[]};
-leaderboard_weekly:{Row:{period_id:string;employee_id:string;total_assigned:number;total_submitted:number;total_approved:number;overdue_count:number;completion_rate:number;on_time_rate:number;avg_score:number;weighted_points:number;rank:number|null;refreshed_at:string};Insert:Record<string,unknown>;Update:Record<string,unknown>;Relationships:[]};
-activity_log:{Row:{id:number;actor_id:string|null;action:string;entity_type:string;entity_id:string|null;metadata:Json;created_at:string};Insert:Record<string,unknown>;Update:Record<string,unknown>;Relationships:[]};
-};Views:Record<string,never>;Functions:Record<string,never>;Enums:Record<string,never>;CompositeTypes:Record<string,never> } };
+export type DbOverview = {
+  connected: boolean;
+  mode: "demo" | "direct";
+  latencyMs: number | null;
+  databaseName: string;
+  tableCount: number;
+  approximateRows: number;
+  dataBytes: number;
+  indexBytes: number;
+  totalBytes: number;
+  activeConnections: number | null;
+  checkedAt: string;
+  message?: string;
+};
+
+export type DbColumn = {
+  name: string;
+  type: string;
+  nullable: boolean;
+  primary: boolean;
+  foreign: boolean;
+};
+
+export type DbTable = {
+  name: string;
+  rows: number;
+  dataBytes: number;
+  indexBytes: number;
+  totalBytes: number;
+  updatedAt: string | null;
+  columns: DbColumn[];
+};
+
+export type DbRelation = {
+  id: string;
+  fromTable: string;
+  fromColumn: string;
+  toTable: string;
+  toColumn: string;
+  constraintName: string;
+};
+
+export type DbSchema = {
+  tables: DbTable[];
+  relations: DbRelation[];
+};
+
+export type DbHealthMetric = {
+  key: string;
+  label: string;
+  value: number;
+};
+
+export type DbHealth = {
+  connected: boolean;
+  uptimeSeconds: number;
+  metrics: DbHealthMetric[];
+  checkedAt: string;
+};

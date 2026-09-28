@@ -1,13 +1,9 @@
-name: CI
+name: Build Control Room
 
 on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
-
-permissions:
-  contents: read
 
 jobs:
   build:
@@ -17,8 +13,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
       - run: npm install
       - run: npm run build
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: https://hkjnihdesbzlxxzjqpat.supabase.co
-          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_LAThhHmdwRyNHL9JLgiTAw_25RrvsyW

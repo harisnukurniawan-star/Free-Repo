@@ -1,15 +1,5 @@
 import type { Metadata } from "next";
+import "@xyflow/react/dist/style.css";
 import "./globals.css";
-
-export const metadata: Metadata = {
-  title: "Internal Task Management",
-  description: "Weekly performance management for supervisors and employees",
-};
-
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return (
-    <html lang="id">
-      <body>{children}</body>
-    </html>
-  );
-}
+export const metadata: Metadata = { title: "Control Room", description: "OCI database operations dashboard" };
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) { return <html lang="en"><body>{children}</body></html>; }
