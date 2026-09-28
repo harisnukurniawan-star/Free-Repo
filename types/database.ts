@@ -1,6 +1,8 @@
+export type DatabaseMode = "snapshot" | "direct";
+
 export type DbOverview = {
   connected: boolean;
-  mode: "demo" | "direct";
+  mode: DatabaseMode;
   latencyMs: number | null;
   databaseName: string;
   tableCount: number;
@@ -10,6 +12,8 @@ export type DbOverview = {
   totalBytes: number;
   activeConnections: number | null;
   checkedAt: string;
+  source?: string;
+  serverVersion?: string;
   message?: string;
 };
 
