@@ -11,8 +11,16 @@ export default function Home(){
   const [duration,setDuration]=useState("5s");
   const [ratio,setRatio]=useState("16:9");
   const [quality,setQuality]=useState("720p");
-  const [jobs,setJobs]=useState<Job[]>([]);\n  const [submitting,setSubmitting]=useState(false);\n  const [error,setError]=useState("");\n  const [view,setView]=useState<"generate"|"gallery"|"history">("generate");\n  const [hydrated,setHydrated]=useState(false);
-  useEffect(()=>{try{const saved=localStorage.getItem("ai-room-jobs");if(saved)setJobs(JSON.parse(saved))}finally{setHydrated(true)}},[]);\n  useEffect(()=>{if(hydrated)localStorage.setItem("ai-room-jobs",JSON.stringify(jobs.slice(0,50)))},[jobs,hydrated]);\n  const canGenerate=prompt.trim().length>=3;\n  const readyVideo=jobs.find(j=>j.videoUrl)?.videoUrl;\n  useEffect(()=>{const pending=jobs.filter(j=>j.status==="Queued"||j.status==="Processing");if(!pending.length)return;const timer=setTimeout(async()=>{for(const item of pending){try{const r=await fetch(`/api/generate/${item.id}`);const d=await r.json();if(!r.ok||!d.job)continue;const status=d.job.status==="completed"?"Ready":d.job.status==="processing"?"Processing":d.job.status==="failed"?"Failed":"Queued";setJobs(current=>current.map(j=>j.id===item.id?{...j,status,videoUrl:d.job.videoUrl}:j));}catch{}}},2500);return()=>clearTimeout(timer)},[jobs]);
+  const [jobs,setJobs]=useState<Job[]>([]);
+  const [submitting,setSubmitting]=useState(false);
+  const [error,setError]=useState("");
+  const [view,setView]=useState<"generate"|"gallery"|"history">("generate");
+  const [hydrated,setHydrated]=useState(false);
+  useEffect(()=>{try{const saved=localStorage.getItem("ai-room-jobs");if(saved)setJobs(JSON.parse(saved))}finally{setHydrated(true)}},[]);
+  useEffect(()=>{if(hydrated)localStorage.setItem("ai-room-jobs",JSON.stringify(jobs.slice(0,50)))},[jobs,hydrated]);
+  const canGenerate=prompt.trim().length>=3;
+  const readyVideo=jobs.find(j=>j.videoUrl)?.videoUrl;
+  useEffect(()=>{const pending=jobs.filter(j=>j.status==="Queued"||j.status==="Processing");if(!pending.length)return;const timer=setTimeout(async()=>{for(const item of pending){try{const r=await fetch(`/api/generate/${item.id}`);const d=await r.json();if(!r.ok||!d.job)continue;const status=d.job.status==="completed"?"Ready":d.job.status==="processing"?"Processing":d.job.status==="failed"?"Failed":"Queued";setJobs(current=>current.map(j=>j.id===item.id?{...j,status,videoUrl:d.job.videoUrl}:j));}catch{}}},2500);return()=>clearTimeout(timer)},[jobs]);
   const estimate=useMemo(()=>model.includes("Fast")?"Low":model.includes("14B")?"Medium":"Premium",[model]);
   async function generate(){
     if(!canGenerate||submitting)return;
@@ -46,7 +54,8 @@ export default function Home(){
             <label><span>Aspect</span><select value={ratio} onChange={e=>setRatio(e.target.value)}><option>16:9</option><option>9:16</option><option>1:1</option></select></label>
             <label><span>Quality</span><select value={quality} onChange={e=>setQuality(e.target.value)}><option>480p</option><option>720p</option></select></label>
           </div>
-          {error&&<div className="error-banner">{error}</div>}\n          <div className="generate-row"><div><small>Estimated compute</small><strong>{estimate} · {duration} · {quality}</strong></div><button className="generate" disabled={!canGenerate||submitting} onClick={generate}>{submitting?"Submitting…":"Generate video ✦"}</button></div>
+          {error&&<div className="error-banner">{error}</div>}
+          <div className="generate-row"><div><small>Estimated compute</small><strong>{estimate} · {duration} · {quality}</strong></div><button className="generate" disabled={!canGenerate||submitting} onClick={generate}>{submitting?"Submitting…":"Generate video ✦"}</button></div>
         </section>
         <aside className="preview card">{readyVideo?<video className="result-video" src={readyVideo} controls playsInline/>:<div className="preview-box"><div className="play">▶</div><strong>Your video appears here</strong><span>Generate a clip to preview it.</span></div>}<div className="preview-meta"><span>{model}</span><span>{ratio}</span><span>{duration}</span><span>{quality}</span></div></aside>
       </div>
