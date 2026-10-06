@@ -1,27 +1,11 @@
 export type VideoRequest={prompt:string;mode:"text"|"image";model:string;duration:"5s"|"10s";aspect:"16:9"|"9:16"|"1:1";quality:"480p"|"720p";imageUrl?:string};
-export type VideoJob={id:string;status:"queued"|"processing"|"completed"|"failed";provider:string;createdAt:string};
-export interface VideoEngine{name:string;submit(input:VideoRequest):Promise<VideoJob>}
-class DevelopmentEngine implements VideoEngine{name="development";async submit(_:VideoRequest){return{id:crypto.randomUUID(),status:"queued",provider:this.name,createdAt:new Date().toISOString()}}}
+export type VideoJob={id:string;status:"queued"|"processing"|"completed"|"failed";provider:string;createdAt:string;videoUrl?:string};
+export interface VideoEngine{name:string;submit(input:VideoRequest):Promise<VideoJob>;status(id:string):Promise<VideoJob>}
+class DevelopmentEngine implements VideoEngine{name="development";async submit(_:VideoRequest){return{id:crypto.randomUUID(),status:"queued" as const,provider:this.name,createdAt:new Date().toISOString()}}async status(id:string){return{id,status:"completed" as const,provider:this.name,createdAt:new Date().toISOString()}}}
 class FalWanEngine implements VideoEngine{
-  name="fal-wan";
-  constructor(private key:string){}
-  async submit(input:VideoRequest):Promise<VideoJob>{
-    if(input.mode==="image"&&!input.imageUrl)throw new Error("Image URL is required for image-to-video");
-    const endpoint=input.mode==="image"?"fal-ai/wan/v2.2-5b/image-to-video":"fal-ai/wan/v2.2-5b/text-to-video/distill";
-    const payload:Record<string,unknown>={prompt:input.prompt,resolution:input.quality,aspect_ratio:input.aspect};
-    if(input.imageUrl)payload.image_url=input.imageUrl;
-    const response=await fetch(`https://queue.fal.run/${endpoint}`,{method:"POST",headers:{Authorization:`Key ${this.key}`,"Content-Type":"application/json"},body:JSON.stringify(payload)});
-    const data=await response.json() as {request_id?:string;detail?:string};
-    if(!response.ok||!data.request_id)throw new Error(data.detail||"Wan provider rejected the request");
-    return{id:data.request_id,status:"queued",provider:this.name,createdAt:new Date().toISOString()};
-  }
+ name="fal-wan";constructor(private key:string){}
+ private endpoint="fal-ai/wan/v2.2-5b/text-to-video/distill";
+ async submit(input:VideoRequest):Promise<VideoJob>{if(input.mode==="image"&&!input.imageUrl)throw new Error("Image URL is required for image-to-video");this.endpoint=input.mode==="image"?"fal-ai/wan/v2.2-5b/image-to-video":"fal-ai/wan/v2.2-5b/text-to-video/distill";const payload:Record<string,unknown>={prompt:input.prompt,resolution:input.quality,aspect_ratio:input.aspect};if(input.imageUrl)payload.image_url=input.imageUrl;const r=await fetch(`https://queue.fal.run/${this.endpoint}`,{method:"POST",headers:{Authorization:`Key ${this.key}`,"Content-Type":"application/json"},body:JSON.stringify(payload)});const d=await r.json() as {request_id?:string;detail?:string};if(!r.ok||!d.request_id)throw new Error(d.detail||"Wan provider rejected the request");return{id:d.request_id,status:"queued",provider:this.name,createdAt:new Date().toISOString()}}
+ async status(id:string):Promise<VideoJob>{const headers={Authorization:`Key ${this.key}`};const sr=await fetch(`https://queue.fal.run/${this.endpoint}/requests/${id}/status`,{headers});const s=await sr.json() as {status?:string;detail?:string};if(!sr.ok)throw new Error(s.detail||"Unable to read job status");const normalized=s.status==="COMPLETED"?"completed":s.status==="IN_PROGRESS"?"processing":s.status==="FAILED"?"failed":"queued";if(normalized!=="completed")return{id,status:normalized,provider:this.name,createdAt:new Date().toISOString()};const rr=await fetch(`https://queue.fal.run/${this.endpoint}/requests/${id}`,{headers});const result=await rr.json() as {video?:{url?:string};detail?:string};if(!rr.ok)throw new Error(result.detail||"Unable to fetch video result");return{id,status:"completed",provider:this.name,createdAt:new Date().toISOString(),videoUrl:result.video?.url}}
 }
-export function getVideoEngine():VideoEngine{
-  const provider=process.env.AI_ROOM_VIDEO_PROVIDER?.toLowerCase();
-  if(provider==="fal"){
-    const key=process.env.AI_ROOM_FAL_KEY;
-    if(!key)throw new Error("AI_ROOM_FAL_KEY is required when AI_ROOM_VIDEO_PROVIDER=fal");
-    return new FalWanEngine(key);
-  }
-  return new DevelopmentEngine();
-}
+export function getVideoEngine():VideoEngine{const provider=process.env.AI_ROOM_VIDEO_PROVIDER?.toLowerCase();if(provider==="fal"){const key=process.env.AI_ROOM_FAL_KEY;if(!key)throw new Error("AI_ROOM_FAL_KEY is required when AI_ROOM_VIDEO_PROVIDER=fal");return new FalWanEngine(key)}return new DevelopmentEngine()}
