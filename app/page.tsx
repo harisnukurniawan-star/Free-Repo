@@ -16,7 +16,7 @@ export default function Home(){
   const [jobs,setJobs]=useState<Job[]>([]);
   const [submitting,setSubmitting]=useState(false);
   const [error,setError]=useState("");
-  const [hydrated,setHydrated]=useState(false);
+  const [hydrated,setHydrated]=useState(false);\n  const [referenceImage,setReferenceImage]=useState("");\n  const [referenceName,setReferenceName]=useState("");\n  const [imageError,setImageError]=useState("");
 
   useEffect(()=>{try{const saved=localStorage.getItem("ai-room-jobs");if(saved)setJobs(JSON.parse(saved))}finally{setHydrated(true)}},[]);
   useEffect(()=>{if(hydrated)localStorage.setItem("ai-room-jobs",JSON.stringify(jobs.slice(0,50)))},[jobs,hydrated]);
@@ -38,17 +38,17 @@ export default function Home(){
     return()=>clearTimeout(timer);
   },[jobs]);
 
-  const canGenerate=prompt.trim().length>=3;
+  const canGenerate=prompt.trim().length>=3&&(mode==="text"||!!referenceImage);
   const readyVideo=jobs.find(j=>j.videoUrl)?.videoUrl;
   const completedJobs=jobs.filter(j=>j.videoUrl);
   const estimate=useMemo(()=>model.includes("Fast")?"Low":model.includes("14B")?"Medium":"Premium",[model]);
 
-  async function generate(){
+  function onReferenceImage(file?:File){\n    setImageError("");\n    if(!file){setReferenceImage("");setReferenceName("");return}\n    const allowed=["image/jpeg","image/png","image/webp"];\n    if(!allowed.includes(file.type)){setImageError("Use JPG, PNG, or WEBP.");setReferenceImage("");setReferenceName("");return}\n    if(file.size>2_500_000){setImageError("Reference image must be 2.5 MB or smaller.");setReferenceImage("");setReferenceName("");return}\n    const reader=new FileReader();\n    reader.onload=()=>{if(typeof reader.result==="string"){setReferenceImage(reader.result);setReferenceName(file.name)}};\n    reader.onerror=()=>setImageError("Could not read the reference image.");\n    reader.readAsDataURL(file);\n  }\n\n  async function generate(){
     if(!canGenerate||submitting)return;
     const submittedPrompt=prompt.trim();
     setSubmitting(true);setError("");
     try{
-      const response=await fetch("/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:submittedPrompt,mode,model,duration,aspect:ratio,quality})});
+      const response=await fetch("/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:submittedPrompt,mode,model,duration,aspect:ratio,quality,imageUrl:mode==="image"?referenceImage:undefined})});
       const data=await response.json();
       if(!response.ok||!data.job)throw new Error(data.error||"Generation request failed");
       setJobs(current=>[{id:data.job.id,prompt:submittedPrompt,model,status:"Queued",created:new Date(data.job.createdAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})},...current]);
@@ -75,7 +75,10 @@ export default function Home(){
         <div className="studio-grid">
           <section className="composer card">
             <div className="tabs"><button onClick={()=>setMode("text")} className={mode==="text"?"active":""}>Text → Video</button><button onClick={()=>setMode("image")} className={mode==="image"?"active":""}>Image → Video</button></div>
-            {mode==="image"&&<label className="drop"><input type="file" accept="image/jpeg,image/png,image/webp"/><b>＋ Add reference image</b><span>JPG, PNG or WEBP · upload wiring next</span></label>}
+            {mode==="image"&&<div>
+              <label className="drop"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>onReferenceImage(e.target.files?.[0])}/>{referenceImage?<><img className="reference-preview" src={referenceImage} alt="Reference preview"/><b>{referenceName}</b><span>Click to replace · JPG, PNG or WEBP · max 2.5 MB</span></>:<><b>＋ Add reference image</b><span>JPG, PNG or WEBP · max 2.5 MB</span></>}</label>
+              {imageError&&<div className="error-banner">{imageError}</div>}
+            </div>}
             <label className="field"><span>Prompt</span><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="A cinematic night scene, soft light, natural camera movement..."/></label>
             <div className="options">
               <label><span>Model</span><select value={model} onChange={e=>setModel(e.target.value)}><option>Wan 2.2 Fast</option><option>Wan 2.2 14B</option><option>Premium (coming soon)</option></select></label>
