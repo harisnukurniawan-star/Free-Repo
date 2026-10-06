@@ -15,7 +15,7 @@ export async function POST(request:Request){
       model:body.model||"Wan 2.2 Fast",
       duration:body.duration==="10s"?"10s":"5s",
       aspect:["9:16","1:1"].includes(body.aspect||"")?body.aspect as VideoRequest["aspect"]:"16:9",
-      quality:body.quality==="480p"?"480p":"720p",
+      quality:body.quality==="580p"?"580p":"720p",
       imageUrl:mode==="image"?imageUrl:undefined
     };
     const job=await getVideoEngine().submit(input);
