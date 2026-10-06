@@ -1,11 +1,62 @@
-export type VideoRequest={prompt:string;mode:"text"|"image";model:string;duration:"5s"|"10s";aspect:"16:9"|"9:16"|"1:1";quality:"480p"|"720p";imageUrl?:string};
+export type VideoRequest={prompt:string;mode:"text"|"image";model:string;duration:"5s"|"10s";aspect:"16:9"|"9:16"|"1:1";quality:"580p"|"720p";imageUrl?:string};
 export type VideoJob={id:string;status:"queued"|"processing"|"completed"|"failed";provider:string;createdAt:string;videoUrl?:string};
 export interface VideoEngine{name:string;submit(input:VideoRequest):Promise<VideoJob>;status(id:string):Promise<VideoJob>}
-class DevelopmentEngine implements VideoEngine{name="development";async submit(_:VideoRequest){return{id:crypto.randomUUID(),status:"queued" as const,provider:this.name,createdAt:new Date().toISOString()}}async status(id:string){return{id,status:"completed" as const,provider:this.name,createdAt:new Date().toISOString()}}}
-class FalWanEngine implements VideoEngine{
- name="fal-wan";constructor(private key:string){}
- private endpoint="fal-ai/wan/v2.2-5b/text-to-video/distill";
- async submit(input:VideoRequest):Promise<VideoJob>{if(input.mode==="image"&&!input.imageUrl)throw new Error("Image URL is required for image-to-video");this.endpoint=input.mode==="image"?"fal-ai/wan/v2.2-5b/image-to-video":"fal-ai/wan/v2.2-5b/text-to-video/distill";const payload:Record<string,unknown>={prompt:input.prompt,resolution:input.quality,aspect_ratio:input.aspect};if(input.imageUrl)payload.image_url=input.imageUrl;const r=await fetch(`https://queue.fal.run/${this.endpoint}`,{method:"POST",headers:{Authorization:`Key ${this.key}`,"Content-Type":"application/json"},body:JSON.stringify(payload)});const d=await r.json() as {request_id?:string;detail?:string};if(!r.ok||!d.request_id)throw new Error(d.detail||"Wan provider rejected the request");return{id:`${input.mode}:${d.request_id}`,status:"queued",provider:this.name,createdAt:new Date().toISOString()}}
- async status(id:string):Promise<VideoJob>{const [kind,rawId]=id.includes(":")?id.split(":",2):["text",id];const endpoint=kind==="image"?"fal-ai/wan/v2.2-5b/image-to-video":"fal-ai/wan/v2.2-5b/text-to-video/distill";const headers={Authorization:`Key ${this.key}`};const sr=await fetch(`https://queue.fal.run/${endpoint}/requests/${rawId}/status`,{headers});const s=await sr.json() as {status?:string;detail?:string};if(!sr.ok)throw new Error(s.detail||"Unable to read job status");const normalized=s.status==="COMPLETED"?"completed":s.status==="IN_PROGRESS"?"processing":s.status==="FAILED"?"failed":"queued";if(normalized!=="completed")return{id,status:normalized,provider:this.name,createdAt:new Date().toISOString()};const rr=await fetch(`https://queue.fal.run/${endpoint}/requests/${rawId}`,{headers});const result=await rr.json() as {video?:{url?:string};detail?:string};if(!rr.ok)throw new Error(result.detail||"Unable to fetch video result");return{id,status:"completed",provider:this.name,createdAt:new Date().toISOString(),videoUrl:result.video?.url}}
+
+class DevelopmentEngine implements VideoEngine{
+  name="development";
+  async submit(_:VideoRequest){return{id:crypto.randomUUID(),status:"queued" as const,provider:this.name,createdAt:new Date().toISOString()}}
+  async status(id:string){return{id,status:"completed" as const,provider:this.name,createdAt:new Date().toISOString()}}
 }
-export function getVideoEngine():VideoEngine{const provider=process.env.AI_ROOM_VIDEO_PROVIDER?.toLowerCase();if(provider==="fal"){const key=process.env.AI_ROOM_FAL_KEY;if(!key)throw new Error("AI_ROOM_FAL_KEY is required when AI_ROOM_VIDEO_PROVIDER=fal");return new FalWanEngine(key)}return new DevelopmentEngine()}
+
+class FalWanEngine implements VideoEngine{
+  name="fal-wan";
+  constructor(private key:string){}
+
+  private endpoint(tier:"fast"|"a14b",mode:"text"|"image"){
+    if(tier==="a14b")return mode==="image"?"fal-ai/wan/v2.2-a14b/image-to-video":"fal-ai/wan/v2.2-a14b/text-to-video";
+    return mode==="image"?"fal-ai/wan/v2.2-5b/image-to-video":"fal-ai/wan/v2.2-5b/text-to-video/distill";
+  }
+
+  async submit(input:VideoRequest):Promise<VideoJob>{
+    if(input.mode==="image"&&!input.imageUrl)throw new Error("Image is required for image-to-video");
+    const tier: "fast"|"a14b"=input.model.includes("14B")?"a14b":"fast";
+    if(tier==="fast"&&input.duration==="10s")throw new Error("Wan 2.2 Fast supports up to 5 seconds");
+    const endpoint=this.endpoint(tier,input.mode);
+    const fps=tier==="fast"?24:16;
+    const numFrames=input.duration==="10s"?161:(tier==="fast"?121:81);
+    const payload:Record<string,unknown>={prompt:input.prompt,resolution:input.quality,aspect_ratio:input.aspect,frames_per_second:fps,num_frames:numFrames};
+    if(input.imageUrl)payload.image_url=input.imageUrl;
+    const response=await fetch(`https://queue.fal.run/${endpoint}`,{method:"POST",headers:{Authorization:`Key ${this.key}`,"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    const data=await response.json() as {request_id?:string;detail?:string};
+    if(!response.ok||!data.request_id)throw new Error(data.detail||"Wan provider rejected the request");
+    return{id:`${tier}:${input.mode}:${data.request_id}`,status:"queued",provider:this.name,createdAt:new Date().toISOString()};
+  }
+
+  async status(id:string):Promise<VideoJob>{
+    const parts=id.split(":");
+    const tier: "fast"|"a14b"=parts.length>=3&&parts[0]==="a14b"?"a14b":"fast";
+    const mode: "text"|"image"=parts.length>=3&&parts[1]==="image"?"image":"text";
+    const rawId=parts.length>=3?parts.slice(2).join(":"):id;
+    const endpoint=this.endpoint(tier,mode);
+    const headers={Authorization:`Key ${this.key}`};
+    const statusResponse=await fetch(`https://queue.fal.run/${endpoint}/requests/${rawId}/status`,{headers});
+    const statusData=await statusResponse.json() as {status?:string;detail?:string};
+    if(!statusResponse.ok)throw new Error(statusData.detail||"Unable to read job status");
+    const normalized=statusData.status==="COMPLETED"?"completed":statusData.status==="IN_PROGRESS"?"processing":statusData.status==="FAILED"?"failed":"queued";
+    if(normalized!=="completed")return{id,status:normalized,provider:this.name,createdAt:new Date().toISOString()};
+    const resultResponse=await fetch(`https://queue.fal.run/${endpoint}/requests/${rawId}`,{headers});
+    const result=await resultResponse.json() as {video?:{url?:string};detail?:string};
+    if(!resultResponse.ok)throw new Error(result.detail||"Unable to fetch video result");
+    return{id,status:"completed",provider:this.name,createdAt:new Date().toISOString(),videoUrl:result.video?.url};
+  }
+}
+
+export function getVideoEngine():VideoEngine{
+  const provider=process.env.AI_ROOM_VIDEO_PROVIDER?.toLowerCase();
+  if(provider==="fal"){
+    const key=process.env.AI_ROOM_FAL_KEY;
+    if(!key)throw new Error("AI_ROOM_FAL_KEY is required when AI_ROOM_VIDEO_PROVIDER=fal");
+    return new FalWanEngine(key);
+  }
+  return new DevelopmentEngine();
+}
