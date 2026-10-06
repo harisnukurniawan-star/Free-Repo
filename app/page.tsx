@@ -16,7 +16,10 @@ export default function Home(){
   const [jobs,setJobs]=useState<Job[]>([]);
   const [submitting,setSubmitting]=useState(false);
   const [error,setError]=useState("");
-  const [hydrated,setHydrated]=useState(false);\n  const [referenceImage,setReferenceImage]=useState("");\n  const [referenceName,setReferenceName]=useState("");\n  const [imageError,setImageError]=useState("");
+  const [hydrated,setHydrated]=useState(false);
+  const [referenceImage,setReferenceImage]=useState("");
+  const [referenceName,setReferenceName]=useState("");
+  const [imageError,setImageError]=useState("");
 
   useEffect(()=>{try{const saved=localStorage.getItem("ai-room-jobs");if(saved)setJobs(JSON.parse(saved))}finally{setHydrated(true)}},[]);
   useEffect(()=>{if(hydrated)localStorage.setItem("ai-room-jobs",JSON.stringify(jobs.slice(0,50)))},[jobs,hydrated]);
@@ -43,7 +46,19 @@ export default function Home(){
   const completedJobs=jobs.filter(j=>j.videoUrl);
   const estimate=useMemo(()=>model.includes("Fast")?"Low":model.includes("14B")?"Medium":"Premium",[model]);
 
-  function onReferenceImage(file?:File){\n    setImageError("");\n    if(!file){setReferenceImage("");setReferenceName("");return}\n    const allowed=["image/jpeg","image/png","image/webp"];\n    if(!allowed.includes(file.type)){setImageError("Use JPG, PNG, or WEBP.");setReferenceImage("");setReferenceName("");return}\n    if(file.size>2_500_000){setImageError("Reference image must be 2.5 MB or smaller.");setReferenceImage("");setReferenceName("");return}\n    const reader=new FileReader();\n    reader.onload=()=>{if(typeof reader.result==="string"){setReferenceImage(reader.result);setReferenceName(file.name)}};\n    reader.onerror=()=>setImageError("Could not read the reference image.");\n    reader.readAsDataURL(file);\n  }\n\n  async function generate(){
+  function onReferenceImage(file?:File){
+    setImageError("");
+    if(!file){setReferenceImage("");setReferenceName("");return}
+    const allowed=["image/jpeg","image/png","image/webp"];
+    if(!allowed.includes(file.type)){setImageError("Use JPG, PNG, or WEBP.");setReferenceImage("");setReferenceName("");return}
+    if(file.size>2_500_000){setImageError("Reference image must be 2.5 MB or smaller.");setReferenceImage("");setReferenceName("");return}
+    const reader=new FileReader();
+    reader.onload=()=>{if(typeof reader.result==="string"){setReferenceImage(reader.result);setReferenceName(file.name)}};
+    reader.onerror=()=>setImageError("Could not read the reference image.");
+    reader.readAsDataURL(file);
+  }
+
+  async function generate(){
     if(!canGenerate||submitting)return;
     const submittedPrompt=prompt.trim();
     setSubmitting(true);setError("");
