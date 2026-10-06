@@ -1,4 +1,4 @@
-name: Build Control Room
+name: Build AI ROOM
 
 on:
   push:
