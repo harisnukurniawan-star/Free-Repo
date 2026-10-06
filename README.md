@@ -44,3 +44,8 @@ AI_ROOM_FAL_KEY=<server-side secret>
 ```
 
 Keep `AI_ROOM_FAL_KEY` server-side and never expose it to the browser.
+
+
+## Health check
+
+Use `GET /api/health` after deployment to verify AI ROOM is live without starting a video generation job. In development mode it returns ready without calling an external GPU provider. When `AI_ROOM_VIDEO_PROVIDER=fal`, readiness requires `AI_ROOM_FAL_KEY` to be configured.
