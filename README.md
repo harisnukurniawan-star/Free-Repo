@@ -23,3 +23,24 @@ npm run dev
 
 ## Safety boundary
 AI ROOM is intended for adult users and lawful content. Production adapters must reject sexual content involving minors or age-ambiguous subjects and non-consensual sexual depictions of real people.
+
+
+## Deployment readiness
+
+AI ROOM should be deployed as its own Vercel project linked to `harisnukurniawan-star/Free-Repo`.
+Do not reuse unrelated Vercel projects.
+
+Safe default environment:
+
+```env
+AI_ROOM_VIDEO_PROVIDER=development
+```
+
+To enable real Wan generation only after a dedicated credential is configured:
+
+```env
+AI_ROOM_VIDEO_PROVIDER=fal
+AI_ROOM_FAL_KEY=<server-side secret>
+```
+
+Keep `AI_ROOM_FAL_KEY` server-side and never expose it to the browser.
