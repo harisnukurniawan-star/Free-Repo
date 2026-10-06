@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 
 type Mode = "text" | "image";
-type Job = { id:string; prompt:string; model:string; status:"Queued"|"Ready"; created:string };
+type Job = { id:string; prompt:string; model:string; status:"Queued"|"Failed"; created:string };
 
 export default function Home(){
   const [mode,setMode]=useState<Mode>("text");
@@ -11,13 +11,21 @@ export default function Home(){
   const [duration,setDuration]=useState("5s");
   const [ratio,setRatio]=useState("16:9");
   const [quality,setQuality]=useState("720p");
-  const [jobs,setJobs]=useState<Job[]>([]);
+  const [jobs,setJobs]=useState<Job[]>([]);\n  const [submitting,setSubmitting]=useState(false);\n  const [error,setError]=useState("");
   const canGenerate=prompt.trim().length>=3;
   const estimate=useMemo(()=>model.includes("Fast")?"Low":model.includes("14B")?"Medium":"Premium",[model]);
-  function generate(){
-    if(!canGenerate)return;
-    setJobs(j=>[{id:crypto.randomUUID(),prompt:prompt.trim(),model,status:"Queued",created:new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})},...j]);
-    setPrompt("");
+  async function generate(){
+    if(!canGenerate||submitting)return;
+    const submittedPrompt=prompt.trim();
+    setSubmitting(true); setError("");
+    try{
+      const response=await fetch("/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:submittedPrompt,mode,model,duration,aspect:ratio,quality})});
+      const data=await response.json();
+      if(!response.ok||!data.job)throw new Error(data.error||"Generation request failed");
+      setJobs(j=>[{id:data.job.id,prompt:submittedPrompt,model,status:"Queued",created:new Date(data.job.createdAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})},...j]);
+      setPrompt("");
+    }catch(e){setError(e instanceof Error?e.message:"Generation request failed");}
+    finally{setSubmitting(false);}
   }
   return <main className="ai-shell">
     <aside className="ai-side">
@@ -38,7 +46,7 @@ export default function Home(){
             <label><span>Aspect</span><select value={ratio} onChange={e=>setRatio(e.target.value)}><option>16:9</option><option>9:16</option><option>1:1</option></select></label>
             <label><span>Quality</span><select value={quality} onChange={e=>setQuality(e.target.value)}><option>480p</option><option>720p</option></select></label>
           </div>
-          <div className="generate-row"><div><small>Estimated compute</small><strong>{estimate} · {duration} · {quality}</strong></div><button className="generate" disabled={!canGenerate} onClick={generate}>Generate video ✦</button></div>
+          {error&&<div className="error-banner">{error}</div>}\n          <div className="generate-row"><div><small>Estimated compute</small><strong>{estimate} · {duration} · {quality}</strong></div><button className="generate" disabled={!canGenerate||submitting} onClick={generate}>{submitting?"Submitting…":"Generate video ✦"}</button></div>
         </section>
         <aside className="preview card"><div className="preview-box"><div className="play">▶</div><strong>Your video appears here</strong><span>Generate a clip to preview it.</span></div><div className="preview-meta"><span>{model}</span><span>{ratio}</span><span>{duration}</span><span>{quality}</span></div></aside>
       </div>
