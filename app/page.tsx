@@ -11,8 +11,8 @@ export default function Home(){
   const [duration,setDuration]=useState("5s");
   const [ratio,setRatio]=useState("16:9");
   const [quality,setQuality]=useState("720p");
-  const [jobs,setJobs]=useState<Job[]>([]);\n  const [submitting,setSubmitting]=useState(false);\n  const [error,setError]=useState("");
-  const canGenerate=prompt.trim().length>=3;\n  const readyVideo=jobs.find(j=>j.videoUrl)?.videoUrl;\n  useEffect(()=>{const pending=jobs.filter(j=>j.status==="Queued"||j.status==="Processing");if(!pending.length)return;const timer=setTimeout(async()=>{for(const item of pending){try{const r=await fetch(`/api/generate/${item.id}`);const d=await r.json();if(!r.ok||!d.job)continue;const status=d.job.status==="completed"?"Ready":d.job.status==="processing"?"Processing":d.job.status==="failed"?"Failed":"Queued";setJobs(current=>current.map(j=>j.id===item.id?{...j,status,videoUrl:d.job.videoUrl}:j));}catch{}}},2500);return()=>clearTimeout(timer)},[jobs]);
+  const [jobs,setJobs]=useState<Job[]>([]);\n  const [submitting,setSubmitting]=useState(false);\n  const [error,setError]=useState("");\n  const [view,setView]=useState<"generate"|"gallery"|"history">("generate");\n  const [hydrated,setHydrated]=useState(false);
+  useEffect(()=>{try{const saved=localStorage.getItem("ai-room-jobs");if(saved)setJobs(JSON.parse(saved))}finally{setHydrated(true)}},[]);\n  useEffect(()=>{if(hydrated)localStorage.setItem("ai-room-jobs",JSON.stringify(jobs.slice(0,50)))},[jobs,hydrated]);\n  const canGenerate=prompt.trim().length>=3;\n  const readyVideo=jobs.find(j=>j.videoUrl)?.videoUrl;\n  useEffect(()=>{const pending=jobs.filter(j=>j.status==="Queued"||j.status==="Processing");if(!pending.length)return;const timer=setTimeout(async()=>{for(const item of pending){try{const r=await fetch(`/api/generate/${item.id}`);const d=await r.json();if(!r.ok||!d.job)continue;const status=d.job.status==="completed"?"Ready":d.job.status==="processing"?"Processing":d.job.status==="failed"?"Failed":"Queued";setJobs(current=>current.map(j=>j.id===item.id?{...j,status,videoUrl:d.job.videoUrl}:j));}catch{}}},2500);return()=>clearTimeout(timer)},[jobs]);
   const estimate=useMemo(()=>model.includes("Fast")?"Low":model.includes("14B")?"Medium":"Premium",[model]);
   async function generate(){
     if(!canGenerate||submitting)return;
@@ -30,12 +30,12 @@ export default function Home(){
   return <main className="ai-shell">
     <aside className="ai-side">
       <div className="ai-brand"><div className="ai-logo">A</div><div><strong>AI ROOM</strong><span>Video Studio</span></div></div>
-      <nav className="ai-nav"><button className="active">✦ <span>Generate</span></button><button>▣ <span>Gallery</span></button><button>◷ <span>History</span></button></nav>
+      <nav className="ai-nav"><button onClick={()=>setView("generate")} className={view==="generate"?"active":""}>✦ <span>Generate</span></button><button onClick={()=>setView("gallery")} className={view==="gallery"?"active":""}>▣ <span>Gallery</span></button><button onClick={()=>setView("history")} className={view==="history"?"active":""}>◷ <span>History</span></button></nav>
       <div className="engine"><i/><div><strong>Engine ready</strong><span>Provider adapter mode</span></div></div>
     </aside>
     <section className="ai-main">
       <header><div><span className="kicker">AI VIDEO GENERATOR</span><h1>Create a video</h1><p>Describe the scene. AI ROOM handles the generation workflow.</p></div><div className="badge">MVP · WAN READY</div></header>
-      <div className="studio-grid">
+      {view==="generate"&&<div className="studio-grid">
         <section className="composer card">
           <div className="tabs"><button onClick={()=>setMode("text")} className={mode==="text"?"active":""}>Text → Video</button><button onClick={()=>setMode("image")} className={mode==="image"?"active":""}>Image → Video</button></div>
           {mode==="image"&&<label className="drop"><input type="file" accept="image/*"/><b>＋ Add reference image</b><span>JPG, PNG or WEBP</span></label>}
