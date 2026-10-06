@@ -13,6 +13,7 @@ export default function Home(){
   const [duration,setDuration]=useState("5s");
   const [ratio,setRatio]=useState("16:9");
   const [quality,setQuality]=useState("720p");
+  useEffect(()=>{if(model.includes("Fast")&&duration==="10s")setDuration("5s")},[model,duration]);
   const [jobs,setJobs]=useState<Job[]>([]);
   const [submitting,setSubmitting]=useState(false);
   const [error,setError]=useState("");
@@ -97,9 +98,9 @@ export default function Home(){
             <label className="field"><span>Prompt</span><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="A cinematic night scene, soft light, natural camera movement..."/></label>
             <div className="options">
               <label><span>Model</span><select value={model} onChange={e=>setModel(e.target.value)}><option>Wan 2.2 Fast</option><option>Wan 2.2 14B</option><option>Premium (coming soon)</option></select></label>
-              <label><span>Duration</span><select value={duration} onChange={e=>setDuration(e.target.value)}><option>5s</option><option>10s</option></select></label>
+              <label><span>Duration</span><select value={duration} onChange={e=>setDuration(e.target.value)}><option>5s</option>{model.includes("14B")&&<option>10s</option>}</select></label>
               <label><span>Aspect</span><select value={ratio} onChange={e=>setRatio(e.target.value)}><option>16:9</option><option>9:16</option><option>1:1</option></select></label>
-              <label><span>Quality</span><select value={quality} onChange={e=>setQuality(e.target.value)}><option>480p</option><option>720p</option></select></label>
+              <label><span>Quality</span><select value={quality} onChange={e=>setQuality(e.target.value)}><option>580p</option><option>720p</option></select></label>
             </div>
             {error&&<div className="error-banner">{error}</div>}
             <div className="generate-row"><div><small>Estimated compute</small><strong>{estimate} · {duration} · {quality}</strong></div><button className="generate" disabled={!canGenerate||submitting} onClick={generate}>{submitting?"Submitting…":"Generate video ✦"}</button></div>
