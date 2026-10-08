@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 type Mode="text"|"image";
 type View="generate"|"gallery"|"history";
 type Job={id:string;prompt:string;model:string;status:"Queued"|"Processing"|"Ready"|"Failed";created:string;videoUrl?:string};
+type ProviderState={checked:boolean;provider:string;realGeneration:boolean};
 
 export default function Home(){
   const [mode,setMode]=useState<Mode>("text");
@@ -21,11 +22,14 @@ export default function Home(){
   const [referenceImage,setReferenceImage]=useState("");
   const [referenceName,setReferenceName]=useState("");
   const [imageError,setImageError]=useState("");
+  const [providerState,setProviderState]=useState<ProviderState>({checked:false,provider:"development",realGeneration:false});
 
-  useEffect(()=>{try{const saved=localStorage.getItem("ai-room-jobs");if(saved)setJobs(JSON.parse(saved))}finally{setHydrated(true)}},[]);
+  useEffect(()=>{try{const saved=localStorage.getItem("ai-room-jobs");if(saved){const parsed=JSON.parse(saved) as Job[];setJobs(parsed.map(j=>j.status==="Ready"&&!j.videoUrl?{...j,status:"Failed" as const}:j))}}finally{setHydrated(true)}},[]);
+  useEffect(()=>{let active=true;fetch("/api/health").then(async response=>{const data=await response.json();if(active)setProviderState({checked:true,provider:data.provider||"unknown",realGeneration:Boolean(data.realGeneration)})}).catch(()=>{if(active)setProviderState({checked:true,provider:"unavailable",realGeneration:false})});return()=>{active=false}},[]);
   useEffect(()=>{if(hydrated)localStorage.setItem("ai-room-jobs",JSON.stringify(jobs.slice(0,50)))},[jobs,hydrated]);
 
   useEffect(()=>{
+    if(!providerState.realGeneration)return;
     const pending=jobs.filter(j=>j.status==="Queued"||j.status==="Processing");
     if(!pending.length)return;
     const timer=setTimeout(async()=>{
@@ -40,9 +44,9 @@ export default function Home(){
       }
     },2500);
     return()=>clearTimeout(timer);
-  },[jobs]);
+  },[jobs,providerState.realGeneration]);
 
-  const canGenerate=prompt.trim().length>=3&&(mode==="text"||!!referenceImage);
+  const canGenerate=providerState.realGeneration&&prompt.trim().length>=3&&(mode==="text"||!!referenceImage);
   const readyVideo=jobs.find(j=>j.videoUrl)?.videoUrl;
   const completedJobs=jobs.filter(j=>j.videoUrl);
   const estimate=useMemo(()=>model.includes("Fast")?"Low":model.includes("14B")?"Medium":"Premium",[model]);
@@ -81,11 +85,11 @@ export default function Home(){
         <button onClick={()=>setView("gallery")} className={view==="gallery"?"active":""}>▣ <span>Gallery</span></button>
         <button onClick={()=>setView("history")} className={view==="history"?"active":""}>◷ <span>History</span></button>
       </nav>
-      <div className="engine"><i/><div><strong>Engine ready</strong><span>Provider adapter mode</span></div></div>
+      <div className="engine"><i className={providerState.realGeneration?"":"idle"}/><div><strong>{providerState.realGeneration?"Engine ready":"Demo mode"}</strong><span>{providerState.realGeneration?"Wan 2.2 via fal.ai":"Real generation not connected"}</span></div></div>
     </aside>
 
     <section className="ai-main">
-      <header><div><span className="kicker">AI VIDEO GENERATOR</span><h1>{view==="generate"?"Create a video":view==="gallery"?"Gallery":"History"}</h1><p>{view==="generate"?"Describe the scene. AI ROOM handles the generation workflow.":view==="gallery"?"Completed generations in one place.":"Recent generation activity and job status."}</p></div><div className="badge">MVP · WAN READY</div></header>
+      <header><div><span className="kicker">AI VIDEO GENERATOR</span><h1>{view==="generate"?"Create a video":view==="gallery"?"Gallery":"History"}</h1><p>{view==="generate"?"Describe the scene. AI ROOM handles the generation workflow.":view==="gallery"?"Completed generations in one place.":"Recent generation activity and job status."}</p></div><div className="badge">{providerState.realGeneration?"WAN LIVE":"MVP · DEMO MODE"}</div></header>
 
       {view==="generate"&&<>
         <div className="studio-grid">
@@ -102,6 +106,7 @@ export default function Home(){
               <label><span>Aspect</span><select value={ratio} onChange={e=>setRatio(e.target.value)}><option>16:9</option><option>9:16</option><option>1:1</option></select></label>
               <label><span>Quality</span><select value={quality} onChange={e=>setQuality(e.target.value)}><option>580p</option><option>720p</option></select></label>
             </div>
+            {!providerState.realGeneration&&providerState.checked&&<div className="info-banner">Preview mode — connect the fal.ai provider to enable real video generation.</div>}
             {error&&<div className="error-banner">{error}</div>}
             <div className="generate-row"><div><small>Estimated compute</small><strong>{estimate} · {duration} · {quality}</strong></div><button className="generate" disabled={!canGenerate||submitting} onClick={generate}>{submitting?"Submitting…":"Generate video ✦"}</button></div>
           </section>
