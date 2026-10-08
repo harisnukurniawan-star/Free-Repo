@@ -1,6 +1,6 @@
 import "server-only";
 
-import { ApiError, createFalClient, type InputType } from "@fal-ai/client";
+import { ApiError, createFalClient } from "@fal-ai/client";
 
 export type VideoRequest = {
   prompt: string;
@@ -187,9 +187,9 @@ class FalWanEngine implements VideoEngine {
       aspect_ratio: input.aspect,
       frames_per_second: tier === "fast" ? 24 : 16,
       num_frames: input.duration === "10s" ? 161 : tier === "fast" ? 121 : 81,
-    } satisfies InputType<typeof ENDPOINTS.fast.text> & InputType<typeof ENDPOINTS.a14b.text>;
+    };
     const payload = input.mode === "image"
-      ? { ...common, image_url: input.imageUrl! } satisfies InputType<typeof ENDPOINTS.fast.image> & InputType<typeof ENDPOINTS.a14b.image>
+      ? { ...common, image_url: input.imageUrl! }
       : common;
     try {
       const { client, signal } = this.client();
