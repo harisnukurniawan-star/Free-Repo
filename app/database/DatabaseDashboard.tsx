@@ -168,14 +168,14 @@ export default function DatabaseDashboard() {
             label: r.fromColumn,
             animated: Boolean(selected && active),
             style: {
-              stroke: active ? "#2f7bff" : "#24344a",
+              stroke: active ? "#2563eb" : "#cbd5e1",
               strokeWidth: active ? 2 : 1,
               opacity: selected && !active ? 0.2 : 0.9,
             },
-            labelStyle: { fill: "#8fa3bd", fontSize: 10 },
+            labelStyle: { fill: "#64748b", fontSize: 10 },
             markerEnd: {
               type: MarkerType.ArrowClosed,
-              color: active ? "#2f7bff" : "#24344a",
+              color: active ? "#2563eb" : "#cbd5e1",
             },
           };
         }),
@@ -291,8 +291,8 @@ export default function DatabaseDashboard() {
                   maxZoom={1.6}
                   proOptions={{ hideAttribution: true }}
                 >
-                  <Background gap={22} size={1} color="#162338" />
-                  <MiniMap pannable zoomable nodeColor="#163968" maskColor="rgba(5,12,23,.82)" />
+                  <Background gap={22} size={1} color="#dbe3ee" />
+                  <MiniMap pannable zoomable nodeColor="#bfdbfe" maskColor="rgba(248,250,252,.78)" />
                   <Controls showInteractive={false} />
                 </ReactFlow>
               )}
@@ -364,7 +364,7 @@ export default function DatabaseDashboard() {
               <div><span className="eyebrow">COMPOSITION</span><h2>Data vs index</h2></div>
             </div>
             <div className="composition">
-              <div className="donut" style={{ background: `conic-gradient(#2f7bff ${dataPct}%, #173252 0)` }}>
+              <div className="donut" style={{ background: `conic-gradient(#2563eb ${dataPct}%, #dbe3ee 0)` }}>
                 <div><strong>{dataPct}%</strong><span>DATA</span></div>
               </div>
               <div className="legend">
