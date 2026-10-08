@@ -1,11 +1,13 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { createVideoJobPoller } from "@/lib/ai-room-polling";
 
 type Mode="text"|"image";
 type View="generate"|"gallery"|"history";
-type Job={id:string;prompt:string;model:string;status:"Queued"|"Processing"|"Ready"|"Failed";created:string;videoUrl?:string};
+type Job={id:string;prompt:string;model:string;status:"Queued"|"Processing"|"Ready"|"Failed";created:string;videoUrl?:string;error?:string};
 type ProviderState={checked:boolean;provider:string;realGeneration:boolean};
+const jobStatuses={queued:"Queued",processing:"Processing",completed:"Ready",failed:"Failed"} as const;
 
 export default function AiRoomClient({initialProviderState}:{initialProviderState:ProviderState}){
   const [mode,setMode]=useState<Mode>("text");
@@ -18,6 +20,8 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
   useEffect(()=>{if(model.includes("Fast")&&duration==="10s")setDuration("5s")},[model,duration]);
   const [jobs,setJobs]=useState<Job[]>([]);
   const [submitting,setSubmitting]=useState(false);
+  const submissionInFlight=useRef(false);
+  const poller=useRef<ReturnType<typeof createVideoJobPoller>|null>(null);
   const [error,setError]=useState("");
   const [hydrated,setHydrated]=useState(false);
   const [referenceImage,setReferenceImage]=useState("");
@@ -25,38 +29,23 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
   const [imageError,setImageError]=useState("");
   const [providerState,setProviderState]=useState<ProviderState>(initialProviderState);
 
-  useEffect(()=>{try{const saved=localStorage.getItem("ai-room-jobs");if(saved){const parsed=JSON.parse(saved) as Job[];setJobs(parsed.map(j=>j.status==="Ready"&&!j.videoUrl?{...j,status:"Failed" as const}:j))}}finally{setHydrated(true)}},[]);
+  useEffect(()=>{try{const saved=localStorage.getItem("ai-room-jobs");if(saved){const parsed=JSON.parse(saved) as Job[];setJobs(parsed.map(j=>j.status==="Ready"&&!j.videoUrl?{...j,status:"Failed" as const,error:"This saved generation has no video URL."}:j))}}catch{setError("Could not load saved generation history from this browser.")}finally{setHydrated(true)}},[]);
   useEffect(()=>{let active=true;fetch("/api/ai-room/health").then(async response=>{const data=await response.json();if(active)setProviderState({checked:true,provider:data.provider||"unknown",realGeneration:Boolean(data.realGeneration)})}).catch(()=>{if(active)setProviderState({checked:true,provider:"unavailable",realGeneration:false})});return()=>{active=false}},[]);
-  useEffect(()=>{if(hydrated)localStorage.setItem("ai-room-jobs",JSON.stringify(jobs.slice(0,50)))},[jobs,hydrated]);
+  useEffect(()=>{if(hydrated){try{localStorage.setItem("ai-room-jobs",JSON.stringify(jobs.slice(0,50)))}catch{setError("Could not save generation history in this browser. Keep this page open to follow your jobs.")}}},[jobs,hydrated]);
 
   useEffect(()=>{
-    if(!providerState.realGeneration)return;
-    const pending=jobs.filter(j=>j.status==="Queued"||j.status==="Processing");
-    if(!pending.length)return;
+    if(!hydrated||!providerState.realGeneration)return;
+    const session=createVideoJobPoller((id,update)=>{
+      setJobs(current=>current.map(j=>j.id===id?{...j,status:update.status?jobStatuses[update.status]:j.status,videoUrl:update.videoUrl||j.videoUrl,error:update.error}:j));
+    });
+    poller.current=session;
+    return()=>{session.stop();poller.current=null};
+  },[hydrated,providerState.realGeneration]);
+  useEffect(()=>{
+    poller.current?.setPendingJobs(jobs.filter(j=>j.status==="Queued"||j.status==="Processing").map(j=>j.id));
+  },[jobs,hydrated,providerState.realGeneration]);
 
-    let cancelled=false;
-    const poll=async()=>{
-      for(const item of pending){
-        if(cancelled)return;
-        try{
-          const response=await fetch(`/api/ai-room/generate/${encodeURIComponent(item.id)}`,{cache:"no-store"});
-          const data=await response.json();
-          if(!response.ok||!data.job)throw new Error(data.error||"Unable to read generation status");
-          const status:Job["status"]=data.job.status==="completed"?"Ready":data.job.status==="processing"?"Processing":data.job.status==="failed"?"Failed":"Queued";
-          setJobs(current=>current.map(j=>j.id===item.id?{...j,status,videoUrl:data.job.videoUrl||j.videoUrl}:j));
-          if(data.job.status==="completed")setError("");
-        }catch(e){
-          setError(e instanceof Error?`Status check failed: ${e.message}`:"Status check failed");
-        }
-      }
-    };
-
-    void poll();
-    const timer=window.setInterval(()=>{void poll()},3000);
-    return()=>{cancelled=true;window.clearInterval(timer)};
-  },[jobs,providerState.realGeneration]);
-
-  const canGenerate=providerState.realGeneration&&prompt.trim().length>=3&&(mode==="text"||!!referenceImage);
+  const canGenerate=providerState.realGeneration&&!model.startsWith("Premium")&&prompt.trim().length>=3&&(mode==="text"||!!referenceImage);
   const readyVideo=jobs.find(j=>j.videoUrl)?.videoUrl;
   const completedJobs=jobs.filter(j=>j.videoUrl);
   const estimate=useMemo(()=>model.includes("Fast")?"Low":model.includes("14B")?"Medium":"Premium",[model]);
@@ -74,17 +63,18 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
   }
 
   async function generate(){
-    if(!canGenerate||submitting)return;
+    if(!canGenerate||submissionInFlight.current)return;
+    submissionInFlight.current=true;
     const submittedPrompt=prompt.trim();
     setSubmitting(true);setError("");
     try{
       const response=await fetch("/api/ai-room/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:submittedPrompt,mode,model,duration,aspect:ratio,quality,imageUrl:mode==="image"?referenceImage:undefined})});
-      const data=await response.json();
+      const data=await response.json().catch(()=>{throw new Error("Could not read the submission response. Check your existing jobs before trying again.")});
       if(!response.ok||!data.job)throw new Error(data.error||"Generation request failed");
       setJobs(current=>[{id:data.job.id,prompt:submittedPrompt,model,status:"Queued",created:new Date(data.job.createdAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})},...current]);
       setPrompt("");
     }catch(e){setError(e instanceof Error?e.message:"Generation request failed")}
-    finally{setSubmitting(false)}
+    finally{submissionInFlight.current=false;setSubmitting(false)}
   }
 
   return <main className="control-room ai-room-route">
@@ -122,7 +112,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
             </div>}
             <label className="field"><span>Prompt</span><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="A cinematic night scene, soft light, natural camera movement..."/></label>
             <div className="options">
-              <label><span>Model</span><select value={model} onChange={e=>setModel(e.target.value)}><option>Wan 2.2 Fast</option><option>Wan 2.2 14B</option><option>Premium (coming soon)</option></select></label>
+              <label><span>Model</span><select value={model} onChange={e=>setModel(e.target.value)}><option>Wan 2.2 Fast</option><option>Wan 2.2 14B</option><option disabled>Premium (coming soon)</option></select></label>
               <label><span>Duration</span><select value={duration} onChange={e=>setDuration(e.target.value)}><option>5s</option>{model.includes("14B")&&<option>10s</option>}</select></label>
               <label><span>Aspect</span><select value={ratio} onChange={e=>setRatio(e.target.value)}><option>16:9</option><option>9:16</option><option>1:1</option></select></label>
               <label><span>Quality</span><select value={quality} onChange={e=>setQuality(e.target.value)}><option>580p</option><option>720p</option></select></label>
@@ -134,7 +124,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
           <aside className="preview card">{readyVideo?<video className="result-video" src={readyVideo} controls playsInline/>:<div className="preview-box"><div className="play">▶</div><strong>Your video appears here</strong><span>Generate a clip to preview it.</span></div>}<div className="preview-meta"><span>{model}</span><span>{ratio}</span><span>{duration}</span><span>{quality}</span></div></aside>
         </div>
         <section className="queue card"><div className="section-head"><div><span className="kicker">QUEUE</span><h2>Recent generations</h2></div><span>{jobs.length} jobs</span></div>
-          {jobs.length===0?<div className="empty">No generations yet. Your first job will appear here.</div>:jobs.slice(0,8).map(j=><div className="job" key={j.id}><div className="thumb">✦</div><div><strong>{j.prompt}</strong><span>{j.model} · {j.created}</span></div><b>{j.status}</b></div>)}
+          {jobs.length===0?<div className="empty">No generations yet. Your first job will appear here.</div>:jobs.slice(0,8).map(j=><div className="job" key={j.id}><div className="thumb">✦</div><div><strong>{j.prompt}</strong><span>{j.model} · {j.created}</span>{j.error&&<div className="error-banner" role="status">{j.error}</div>}</div><b>{j.status}</b></div>)}
         </section>
       </>}
 
@@ -143,7 +133,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
       </section>}
 
       {view==="history"&&<section className="queue card"><div className="section-head"><div><span className="kicker">HISTORY</span><h2>Generation history</h2></div><span>{jobs.length} jobs</span></div>
-        {jobs.length===0?<div className="empty">No generation history yet.</div>:jobs.map(j=><div className="job" key={j.id}><div className="thumb">◷</div><div><strong>{j.prompt}</strong><span>{j.model} · {j.created}</span></div><b>{j.status}</b></div>)}
+        {jobs.length===0?<div className="empty">No generation history yet.</div>:jobs.map(j=><div className="job" key={j.id}><div className="thumb">◷</div><div><strong>{j.prompt}</strong><span>{j.model} · {j.created}</span>{j.error&&<div className="error-banner" role="status">{j.error}</div>}</div><b>{j.status}</b></div>)}
       </section>}
       </div>
     </section>
