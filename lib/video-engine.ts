@@ -43,6 +43,12 @@ const ENDPOINTS = {
   },
 } as const;
 type Tier = keyof typeof ENDPOINTS;
+
+export function wanEndpointFor(model: VideoRequest["model"], mode: VideoRequest["mode"]) {
+  const tier: Tier = model === "Wan 2.2 14B" ? "a14b" : "fast";
+  return ENDPOINTS[tier][mode];
+}
+
 const REQUEST_ID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/;
 
 function option<T extends string>(value: unknown, allowed: readonly T[], fallback: T, label: string): T {
@@ -178,7 +184,7 @@ class FalWanEngine implements VideoEngine {
   async submit(value: VideoRequest): Promise<VideoJob> {
     const input = parseVideoRequest(value);
     const tier: Tier = input.model === "Wan 2.2 14B" ? "a14b" : "fast";
-    const endpoint = ENDPOINTS[tier][input.mode];
+    const endpoint = wanEndpointFor(input.model, input.mode);
     // The four official Wan schemas use frame counts (17..161), not duration.
     // 121 at 24 fps is about 5s; 81/161 at 16 fps are about 5s/10s.
     const common = {
