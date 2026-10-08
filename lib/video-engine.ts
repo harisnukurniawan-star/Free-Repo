@@ -4,8 +4,8 @@ export interface VideoEngine{name:string;submit(input:VideoRequest):Promise<Vide
 
 class DevelopmentEngine implements VideoEngine{
   name="development";
-  async submit(_:VideoRequest){return{id:crypto.randomUUID(),status:"queued" as const,provider:this.name,createdAt:new Date().toISOString()}}
-  async status(id:string){return{id,status:"completed" as const,provider:this.name,createdAt:new Date().toISOString()}}
+  async submit(_:VideoRequest){throw new Error("Real video generation is not configured. Connect fal.ai before generating a video.")}
+  async status(id:string){return{id,status:"failed" as const,provider:this.name,createdAt:new Date().toISOString()}}
 }
 
 class FalWanEngine implements VideoEngine{
