@@ -33,18 +33,27 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
     if(!providerState.realGeneration)return;
     const pending=jobs.filter(j=>j.status==="Queued"||j.status==="Processing");
     if(!pending.length)return;
-    const timer=setTimeout(async()=>{
+
+    let cancelled=false;
+    const poll=async()=>{
       for(const item of pending){
+        if(cancelled)return;
         try{
-          const response=await fetch(`/api/ai-room/generate/${encodeURIComponent(item.id)}`);
+          const response=await fetch(`/api/ai-room/generate/${encodeURIComponent(item.id)}`,{cache:"no-store"});
           const data=await response.json();
-          if(!response.ok||!data.job)continue;
+          if(!response.ok||!data.job)throw new Error(data.error||"Unable to read generation status");
           const status:Job["status"]=data.job.status==="completed"?"Ready":data.job.status==="processing"?"Processing":data.job.status==="failed"?"Failed":"Queued";
           setJobs(current=>current.map(j=>j.id===item.id?{...j,status,videoUrl:data.job.videoUrl||j.videoUrl}:j));
-        }catch{}
+          if(data.job.status==="completed")setError("");
+        }catch(e){
+          setError(e instanceof Error?`Status check failed: ${e.message}`:"Status check failed");
+        }
       }
-    },2500);
-    return()=>clearTimeout(timer);
+    };
+
+    void poll();
+    const timer=window.setInterval(()=>{void poll()},3000);
+    return()=>{cancelled=true;window.clearInterval(timer)};
   },[jobs,providerState.realGeneration]);
 
   const canGenerate=providerState.realGeneration&&prompt.trim().length>=3&&(mode==="text"||!!referenceImage);
