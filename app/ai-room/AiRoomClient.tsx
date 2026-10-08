@@ -17,7 +17,6 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
   const [duration,setDuration]=useState("5s");
   const [ratio,setRatio]=useState("16:9");
   const [quality,setQuality]=useState("720p");
-  useEffect(()=>{if(model.includes("Fast")&&duration==="10s")setDuration("5s")},[model,duration]);
   const [jobs,setJobs]=useState<Job[]>([]);
   const [submitting,setSubmitting]=useState(false);
   const submissionInFlight=useRef(false);
@@ -29,9 +28,32 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
   const [imageError,setImageError]=useState("");
   const [providerState,setProviderState]=useState<ProviderState>(initialProviderState);
 
-  useEffect(()=>{try{const saved=localStorage.getItem("ai-room-jobs");if(saved){const parsed=JSON.parse(saved) as Job[];setJobs(parsed.map(j=>j.status==="Ready"&&!j.videoUrl?{...j,status:"Failed" as const,error:"This saved generation has no video URL."}:j))}}catch{setError("Could not load saved generation history from this browser.")}finally{setHydrated(true)}},[]);
+  useEffect(()=>{
+    const timer=window.setTimeout(()=>{
+      try{
+        const saved=localStorage.getItem("ai-room-jobs");
+        if(saved){
+          const parsed=JSON.parse(saved) as Job[];
+          setJobs(parsed.map(j=>j.status==="Ready"&&!j.videoUrl?{...j,status:"Failed" as const,error:"This saved generation has no video URL."}:j));
+        }
+      }catch{
+        setError("Could not load saved generation history from this browser.");
+      }finally{
+        setHydrated(true);
+      }
+    },0);
+    return()=>window.clearTimeout(timer);
+  },[]);
   useEffect(()=>{let active=true;fetch("/api/ai-room/health").then(async response=>{const data=await response.json();if(active)setProviderState({checked:true,provider:data.provider||"unknown",realGeneration:Boolean(data.realGeneration)})}).catch(()=>{if(active)setProviderState({checked:true,provider:"unavailable",realGeneration:false})});return()=>{active=false}},[]);
-  useEffect(()=>{if(hydrated){try{localStorage.setItem("ai-room-jobs",JSON.stringify(jobs.slice(0,50)))}catch{setError("Could not save generation history in this browser. Keep this page open to follow your jobs.")}}},[jobs,hydrated]);
+  useEffect(()=>{
+    if(!hydrated)return;
+    try{
+      localStorage.setItem("ai-room-jobs",JSON.stringify(jobs.slice(0,50)));
+    }catch{
+      const timer=window.setTimeout(()=>setError("Could not save generation history in this browser. Keep this page open to follow your jobs."),0);
+      return()=>window.clearTimeout(timer);
+    }
+  },[jobs,hydrated]);
 
   useEffect(()=>{
     if(!hydrated||!providerState.realGeneration)return;
@@ -112,7 +134,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
             </div>}
             <label className="field"><span>Prompt</span><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="A cinematic night scene, soft light, natural camera movement..."/></label>
             <div className="options">
-              <label><span>Model</span><select value={model} onChange={e=>setModel(e.target.value)}><option>Wan 2.2 Fast</option><option>Wan 2.2 14B</option><option disabled>Premium (coming soon)</option></select></label>
+              <label><span>Model</span><select value={model} onChange={e=>{const next=e.target.value;setModel(next);if(next.includes("Fast"))setDuration("5s")}}><option>Wan 2.2 Fast</option><option>Wan 2.2 14B</option><option disabled>Premium (coming soon)</option></select></label>
               <label><span>Duration</span><select value={duration} onChange={e=>setDuration(e.target.value)}><option>5s</option>{model.includes("14B")&&<option>10s</option>}</select></label>
               <label><span>Aspect</span><select value={ratio} onChange={e=>setRatio(e.target.value)}><option>16:9</option><option>9:16</option><option>1:1</option></select></label>
               <label><span>Quality</span><select value={quality} onChange={e=>setQuality(e.target.value)}><option>580p</option><option>720p</option></select></label>
