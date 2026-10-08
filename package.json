@@ -6,14 +6,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "node --conditions=react-server --import tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@xyflow/react": "^12.9.2",
     "mysql2": "^3.15.3",
     "next": "16.3.3",
     "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "react-dom": "19.2.0",
+    "@fal-ai/client": "1.10.1",
+    "server-only": "0.0.1"
   },
   "devDependencies": {
     "@types/node": "^22",
@@ -21,6 +24,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.3",
-    "typescript": "^5.9"
+    "typescript": "^5.9",
+    "tsx": "^4.20.6"
   }
 }
