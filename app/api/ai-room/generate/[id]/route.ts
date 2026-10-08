@@ -5,8 +5,8 @@ export async function GET(_:Request,{params}:{params:Promise<{id:string}>}){
   try{
     const {id}=await params;
     if(!id)return NextResponse.json({error:"Job id is required"},{status:400});
-    return NextResponse.json({success:true,job:await getVideoEngine().status(id)});
+    return NextResponse.json({success:true,job:await getVideoEngine().status(id)},{headers:{"Cache-Control":"no-store"}});
   }catch(e){
-    return NextResponse.json({error:e instanceof Error?e.message:"Unable to read job"},{status:502});
+    return NextResponse.json({error:e instanceof Error?e.message:"Unable to read job"},{status:502,headers:{"Cache-Control":"no-store"}});
   }
 }
