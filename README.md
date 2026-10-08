@@ -1,45 +1,62 @@
-# Control Room
+# AI ROOM
 
-Personal operations dashboard. V1 focuses only on **OCI / MySQL Database visibility**.
+Private, multi-engine AI video generation studio.
 
-## V1
-- Blue-black control-room UI
-- Connection status and database footprint
-- Table count and approximate row count
-- Interactive Railway-style relational schema map
-- Table details and relationship highlighting
-- Top tables by size
-- Data vs index composition
-- Server health
-- Read-only metadata queries
-- Demo fallback when OCI credentials are not configured
+## Current status
+AI ROOM is live as a Vercel preview and currently runs in safe `development` provider mode. The UI, generation API, job polling, gallery/history flow, health endpoint, and Wan/fal adapter are in place. Real GPU generation remains disabled until a dedicated provider credential is configured.
+
+## MVP
+- Text-to-video and image-to-video UI
+- Model, duration, aspect ratio and quality controls
+- Local generation queue UX
+- Provider-neutral `VideoEngine` contract
+- `POST /api/generate` validation and job creation
+- `GET /api/generate/[id]` job polling
+- `GET /api/health` deployment readiness check
+- Wan 2.2 adapter through fal.ai
+- Clean white responsive studio UI
+
+## Architecture
+Next.js frontend → generation API → VideoEngine adapter → GPU/API provider → video result URL.
+
+The current development adapter does not spend external GPU/API credits.
+
+## Deployment
+Vercel project: `ai-room`
+
+Canonical AI ROOM URL:
+`https://ai-room-ai-team-chat.vercel.app`
+
+Current GitHub repository:
+`harisnukurniawan-star/Free-Repo`
+
+Repository rename target:
+`harisnukurniawan-star/ai-room`
+
+Working branch:
+`feature/ai-room-video-mvp`
+
+Safe default environment:
+```env
+AI_ROOM_VIDEO_PROVIDER=development
+```
+
+Production video generation requires:
+```env
+AI_ROOM_VIDEO_PROVIDER=fal
+AI_ROOM_FAL_KEY=<server-side secret>
+```
+
+Keep `AI_ROOM_FAL_KEY` server-side and never expose it to the browser.
+
+## Health check
+Use `GET /api/health` after deployment. Development mode reports ready without calling an external GPU provider. In fal mode, readiness requires `AI_ROOM_FAL_KEY`.
 
 ## Run
-
 ```bash
 npm install
-cp .env.example .env.local
 npm run dev
 ```
 
-Open `http://localhost:3000/database`.
-
-## OCI connection
-
-Set:
-
-```env
-CONTROL_ROOM_DB_MODE=direct
-OCI_DB_HOST=...
-OCI_DB_PORT=3306
-OCI_DB_NAME=...
-OCI_DB_USER=...
-OCI_DB_PASSWORD=...
-OCI_DB_SSL=true
-```
-
-Use a dedicated **read-only** MySQL account. The dashboard does not expose write, delete, migration, or SQL-console actions.
-
-> Note: if the HeatWave endpoint is private-only, a public Vercel deployment cannot connect to it directly. In that case keep the UI unchanged and route the server API through an OCI-side gateway/function in the next integration step.
-
-The previous Internal Task Management scaffold is preserved in branch `backup/internal-task-foundation`.
+## Safety boundary
+AI ROOM is intended for adult users and lawful content. Production adapters must reject sexual content involving minors or age-ambiguous subjects and non-consensual sexual depictions of real people.
