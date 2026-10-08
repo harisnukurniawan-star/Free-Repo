@@ -2,6 +2,15 @@ export type VideoRequest={prompt:string;mode:"text"|"image";model:string;duratio
 export type VideoJob={id:string;status:"queued"|"processing"|"completed"|"failed";provider:string;createdAt:string;videoUrl?:string};
 export interface VideoEngine{name:string;submit(input:VideoRequest):Promise<VideoJob>;status(id:string):Promise<VideoJob>}
 
+type FalPayload={status?:string;detail?:string;request_id?:string;video?:{url?:string};data?:{video?:{url?:string}}};
+
+async function readFalPayload(response:Response):Promise<{payload:FalPayload|null;raw:string}>{
+  const raw=await response.text();
+  if(!raw.trim())return{payload:null,raw:""};
+  try{return{payload:JSON.parse(raw) as FalPayload,raw}}
+  catch{return{payload:null,raw}}
+}
+
 class DevelopmentEngine implements VideoEngine{
   name="development";
   async submit(_:VideoRequest):Promise<VideoJob>{throw new Error("Real video generation is not configured. Connect fal.ai before generating a video.")}
@@ -27,8 +36,8 @@ class FalWanEngine implements VideoEngine{
     const payload:Record<string,unknown>={prompt:input.prompt,resolution:input.quality,aspect_ratio:input.aspect,frames_per_second:fps,num_frames:numFrames};
     if(input.imageUrl)payload.image_url=input.imageUrl;
     const response=await fetch(`https://queue.fal.run/${endpoint}`,{method:"POST",headers:{Authorization:`Key ${this.key}`,"Content-Type":"application/json"},body:JSON.stringify(payload)});
-    const data=await response.json() as {request_id?:string;detail?:string};
-    if(!response.ok||!data.request_id)throw new Error(data.detail||"Wan provider rejected the request");
+    const {payload:data}=await readFalPayload(response);
+    if(!response.ok||!data?.request_id)throw new Error(data?.detail||`Wan provider rejected the request (${response.status})`);
     return{id:`${tier}:${input.mode}:${data.request_id}`,status:"queued",provider:this.name,createdAt:new Date().toISOString()};
   }
 
@@ -40,8 +49,16 @@ class FalWanEngine implements VideoEngine{
     const endpoint=this.endpoint(tier,mode);
     const headers={Authorization:`Key ${this.key}`};
     const statusResponse=await fetch(`https://queue.fal.run/${endpoint}/requests/${rawId}/status`,{headers,cache:"no-store"});
-    const statusData=await statusResponse.json() as {status?:string;detail?:string};
-    if(!statusResponse.ok)throw new Error(statusData.detail||`Unable to read job status (${statusResponse.status})`);
+    const {payload:statusData}=await readFalPayload(statusResponse);
+
+    if(!statusResponse.ok){
+      if(statusResponse.status===429||statusResponse.status>=500)
+        return{id,status:"queued",provider:this.name,createdAt:new Date().toISOString()};
+      throw new Error(statusData?.detail||`Unable to read job status (${statusResponse.status})`);
+    }
+
+    if(!statusData)
+      return{id,status:"queued",provider:this.name,createdAt:new Date().toISOString()};
 
     const state=(statusData.status||"").toUpperCase();
     const normalized:VideoJob["status"]=
@@ -53,10 +70,18 @@ class FalWanEngine implements VideoEngine{
     if(normalized!=="completed")return{id,status:normalized,provider:this.name,createdAt:new Date().toISOString()};
 
     const resultResponse=await fetch(`https://queue.fal.run/${endpoint}/requests/${rawId}`,{headers,cache:"no-store"});
-    const result=await resultResponse.json() as {video?:{url?:string};data?:{video?:{url?:string}};detail?:string};
-    if(!resultResponse.ok)throw new Error(result.detail||`Unable to fetch video result (${resultResponse.status})`);
-    const videoUrl=result.video?.url||result.data?.video?.url;
-    if(!videoUrl)throw new Error("fal completed the job but returned no video URL");
+    const {payload:result}=await readFalPayload(resultResponse);
+
+    if(!resultResponse.ok){
+      if(resultResponse.status===429||resultResponse.status>=500)
+        return{id,status:"processing",provider:this.name,createdAt:new Date().toISOString()};
+      throw new Error(result?.detail||`Unable to fetch video result (${resultResponse.status})`);
+    }
+
+    const videoUrl=result?.video?.url||result?.data?.video?.url;
+    if(!videoUrl)
+      return{id,status:"processing",provider:this.name,createdAt:new Date().toISOString()};
+
     return{id,status:"completed",provider:this.name,createdAt:new Date().toISOString(),videoUrl};
   }
 }
