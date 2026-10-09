@@ -19,6 +19,7 @@ export type StoredAiRoomJob = {
   videoWidth?: number;
   videoHeight?: number;
   preserveFace?: boolean;
+  actionOnly?: boolean;
   error?: string;
 };
 
@@ -78,6 +79,7 @@ export function normalizeStoredJob(value: unknown): StoredAiRoomJob | null {
     videoWidth: typeof value.videoWidth === "number" && Number.isInteger(value.videoWidth) && value.videoWidth > 0 ? value.videoWidth : undefined,
     videoHeight: typeof value.videoHeight === "number" && Number.isInteger(value.videoHeight) && value.videoHeight > 0 ? value.videoHeight : undefined,
     preserveFace: typeof value.preserveFace === "boolean" ? value.preserveFace : undefined,
+    actionOnly: typeof value.actionOnly === "boolean" ? value.actionOnly : undefined,
     error: typeof value.error === "string" ? value.error : undefined,
   };
 }
