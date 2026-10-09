@@ -1,4 +1,5 @@
 import {NextResponse} from "next/server";
+import { generationAccessState } from "@/lib/ai-room-access";
 
 export async function GET(){
   const provider=process.env.AI_ROOM_VIDEO_PROVIDER?.toLowerCase()||"development";
@@ -14,6 +15,7 @@ export async function GET(){
     provider,
     realGeneration,
     falConfigured:provider==="fal"?falConfigured:undefined,
+    ...generationAccessState(),
     checkedAt:new Date().toISOString()
   },{status:configurationValid?200:503});
 }

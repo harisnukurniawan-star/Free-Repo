@@ -8,7 +8,7 @@ import UsageCostView from "./UsageCostView";
 
 type Mode="text"|"image";
 type View="generate"|"gallery"|"history"|"usage";
-type ProviderState={checked:boolean;provider:string;realGeneration:boolean};
+type ProviderState={checked:boolean;provider:string;realGeneration:boolean;generationLocked:boolean;generationAuthRequired:boolean};
 const jobStatuses={queued:"Queued",processing:"Processing",completed:"Ready",failed:"Failed"} as const;
 
 export default function AiRoomClient({initialProviderState}:{initialProviderState:ProviderState}){
@@ -21,10 +21,13 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
   const [quality,setQuality]=useState<WanQuality>("720p");
   const [jobs,setJobs]=useState<StoredAiRoomJob[]>([]);
   const [submitting,setSubmitting]=useState(false);
+  const [accessKey,setAccessKey]=useState("");
+  const referenceReadId=useRef(0);
   const submissionInFlight=useRef(false);
   const poller=useRef<ReturnType<typeof createVideoJobPoller>|null>(null);
   const [error,setError]=useState("");
   const [hydrated,setHydrated]=useState(false);
+  const [historyWritable,setHistoryWritable]=useState(true);
   const [referenceImage,setReferenceImage]=useState("");
   const [referenceName,setReferenceName]=useState("");
   const [imageError,setImageError]=useState("");
@@ -38,28 +41,30 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
       try{
         const saved=localStorage.getItem("ai-room-jobs");
         if(saved){
-          const parsed=JSON.parse(saved) as unknown[];
-          const normalized=parsed.map(normalizeStoredJob).filter((job):job is StoredAiRoomJob=>Boolean(job));
+          const parsed:unknown=JSON.parse(saved);
+          if(!Array.isArray(parsed))throw new Error("Invalid saved history");
+          const normalized=parsed.slice(0,50).map(normalizeStoredJob).filter((job):job is StoredAiRoomJob=>Boolean(job));
           setJobs(normalized.map(j=>j.status==="Ready"&&!j.videoUrl?{...j,status:"Failed" as const,error:"This saved generation has no video URL."}:j));
         }
       }catch{
-        setError("Could not load saved generation history from this browser.");
+        setHistoryWritable(false);
+        setError("Could not read saved browser history. It has been preserved instead of overwritten. New jobs will not be saved in this tab.");
       }finally{
         setHydrated(true);
       }
     },0);
     return()=>window.clearTimeout(timer);
   },[]);
-  useEffect(()=>{let active=true;fetch("/api/ai-room/health").then(async response=>{const data=await response.json();if(active)setProviderState({checked:true,provider:data.provider||"unknown",realGeneration:Boolean(data.realGeneration)})}).catch(()=>{if(active)setProviderState({checked:true,provider:"unavailable",realGeneration:false})});return()=>{active=false}},[]);
+  useEffect(()=>{let active=true;fetch("/api/ai-room/health").then(async response=>{const data=await response.json();if(active)setProviderState({checked:true,provider:data.provider||"unknown",realGeneration:Boolean(data.realGeneration),generationLocked:Boolean(data.generationLocked),generationAuthRequired:true})}).catch(()=>{if(active)setProviderState({checked:true,provider:"unavailable",realGeneration:false,generationLocked:true,generationAuthRequired:true})});return()=>{active=false}},[]);
   useEffect(()=>{
-    if(!hydrated)return;
+    if(!hydrated||!historyWritable)return;
     try{
       localStorage.setItem("ai-room-jobs",JSON.stringify(jobs.slice(0,50)));
     }catch{
       const timer=window.setTimeout(()=>setError("Could not save generation history in this browser. Keep this page open to follow your jobs."),0);
       return()=>window.clearTimeout(timer);
     }
-  },[jobs,hydrated]);
+  },[jobs,hydrated,historyWritable]);
 
   useEffect(()=>{
     if(!hydrated||!providerState.realGeneration)return;
@@ -80,9 +85,14 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
     return()=>window.clearInterval(timer);
   },[hasPending]);
 
+  useEffect(()=>{
+    const timer=window.setTimeout(()=>{try{setAccessKey(sessionStorage.getItem("ai-room-generation-key")||"")}catch{}},0);
+    return()=>window.clearTimeout(timer);
+  },[]);
+
   const modelConfig=WAN_CATALOG[model];
   const estimate=useMemo(()=>estimateWanCostUsd({model,mode,duration,quality}),[model,mode,duration,quality]);
-  const canGenerate=providerState.realGeneration&&estimate!==null&&prompt.trim().length>=3&&(mode==="text"||!!referenceImage);
+  const canGenerate=providerState.realGeneration&&!providerState.generationLocked&&(!providerState.generationAuthRequired||accessKey.trim().length>0)&&estimate!==null&&prompt.trim().length>=3&&(mode==="text"||!!referenceImage);
   const readyJob=jobs.find(j=>j.videoUrl);
   const readyVideo=readyJob?.videoUrl;
   const completedJobs=jobs.filter(j=>j.videoUrl);
@@ -95,14 +105,17 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
   const viewSubtitle=view==="generate"?"Describe the scene. AI ROOM handles the generation workflow.":view==="gallery"?"Completed generations in one place.":view==="history"?"Recent generation activity and job status.":"Estimated generation spend and usage history for this browser.";
 
   function onReferenceImage(file?:File){
+    const readId=++referenceReadId.current;
     setImageError("");
+    setReferenceImage("");
+    setReferenceName("");
     if(!file){setReferenceImage("");setReferenceName("");return}
     const allowed=["image/jpeg","image/png","image/webp"];
     if(!allowed.includes(file.type)){setImageError("Use JPG, PNG, or WEBP.");setReferenceImage("");setReferenceName("");return}
     if(file.size>2_500_000){setImageError("Reference image must be 2.5 MB or smaller.");setReferenceImage("");setReferenceName("");return}
     const reader=new FileReader();
-    reader.onload=()=>{if(typeof reader.result==="string"){setReferenceImage(reader.result);setReferenceName(file.name)}};
-    reader.onerror=()=>setImageError("Could not read the reference image.");
+    reader.onload=()=>{if(readId===referenceReadId.current&&typeof reader.result==="string"){setReferenceImage(reader.result);setReferenceName(file.name)}};
+    reader.onerror=()=>{if(readId===referenceReadId.current)setImageError("Could not read the reference image.")};
     reader.readAsDataURL(file);
   }
 
@@ -170,7 +183,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
     const submittedPrompt=prompt.trim();
     setSubmitting(true);setError("");
     try{
-      const response=await fetch("/api/ai-room/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:submittedPrompt,mode,model,duration,aspect:ratio,quality,imageUrl:mode==="image"?referenceImage:undefined})});
+      const response=await fetch("/api/ai-room/generate",{method:"POST",headers:{"Content-Type":"application/json","x-ai-room-access-key":accessKey},body:JSON.stringify({prompt:submittedPrompt,mode,model,duration,aspect:ratio,quality,imageUrl:mode==="image"?referenceImage:undefined})});
       const data=await response.json().catch(()=>{throw new Error("Could not read the submission response. Check your existing jobs before trying again.")});
       if(!response.ok||!data.job)throw new Error(data.error||"Generation request failed");
       setJobs(current=>[{
@@ -204,15 +217,15 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
       <div className="side-foot">
         <span className={`status-dot ${providerState.realGeneration?"online":"offline"}`} />
         <div>
-          <strong>{providerState.realGeneration?"Wan engine ready":"Video engine unavailable"}</strong>
-          <small>{providerState.realGeneration?"fal.ai connected":"Check provider configuration"}</small>
+          <strong>{providerState.generationLocked?"Generation locked":providerState.realGeneration?"Wan engine ready":"Video engine unavailable"}</strong>
+          <small>{providerState.generationLocked?"Access key setup required":providerState.realGeneration?"fal.ai connected":"Check provider configuration"}</small>
         </div>
       </div>
     </aside>
 
     <section className="workspace ai-room-workspace">
       <div className="ai-main">
-      <header><div><span className="kicker">AI VIDEO GENERATOR</span><h1>{viewTitle}</h1><p>{viewSubtitle}</p></div><div className="badge">{providerState.realGeneration?"WAN LIVE":"MVP · DEMO MODE"}</div></header>
+      <header><div><span className="kicker">AI VIDEO GENERATOR</span><h1>{viewTitle}</h1><p>{viewSubtitle}</p></div><div className="badge">{providerState.generationLocked?"GENERATION LOCKED":providerState.realGeneration?"WAN LIVE":"MVP · DEMO MODE"}</div></header>
       <div className="ai-subnav"><button onClick={()=>setView("generate")} className={view==="generate"?"active":""}>✦ Generate</button><button onClick={()=>setView("gallery")} className={view==="gallery"?"active":""}>▣ Gallery</button><button onClick={()=>setView("history")} className={view==="history"?"active":""}>◷ History</button><button onClick={()=>setView("usage")} className={view==="usage"?"active":""}>◌ Usage & Cost</button></div>
 
       {view==="generate"&&<>
@@ -220,7 +233,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
           <section className="composer card">
             <div className="tabs"><button onClick={()=>setMode("text")} className={mode==="text"?"active":""}>Text → Video</button><button onClick={()=>setMode("image")} className={mode==="image"?"active":""}>Image → Video</button></div>
             {mode==="image"&&<div>
-              <label className="drop"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>onReferenceImage(e.target.files?.[0])}/>{referenceImage?<><img className="reference-preview" src={referenceImage} alt="Reference preview"/><b>{referenceName}</b><span>Click to replace · JPG, PNG or WEBP · max 2.5 MB</span></>:<><b>＋ Add reference image</b><span>JPG, PNG or WEBP · max 2.5 MB</span></>}</label>
+              <label className="drop"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{onReferenceImage(e.target.files?.[0]);e.currentTarget.value=""}}/>{referenceImage?<><img className="reference-preview" src={referenceImage} alt="Reference preview"/><b>{referenceName}</b><span>Click to replace · JPG, PNG or WEBP · max 2.5 MB</span></>:<><b>＋ Add reference image</b><span>JPG, PNG or WEBP · max 2.5 MB</span></>}</label>
               {imageError&&<div className="error-banner">{imageError}</div>}
             </div>}
             <label className="field"><span>Prompt</span><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="A cinematic night scene, soft light, natural camera movement..."/></label>
@@ -231,10 +244,12 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
               <label><span>Quality</span><select value={quality} onChange={e=>setQuality(e.target.value as WanQuality)}>{modelConfig.qualities.map(value=><option key={value}>{value}</option>)}</select></label>
             </div>
             {!providerState.realGeneration&&providerState.checked&&<div className="info-banner">Preview mode — connect the fal.ai provider to enable real video generation.</div>}
+            {providerState.generationLocked&&<div className="info-banner" role="status">Paid generation is locked until the server administrator configures AI_ROOM_GENERATE_ACCESS_KEY (minimum 16 characters). No fal.ai credit can be charged while locked.</div>}
+            {providerState.generationAuthRequired&&!providerState.generationLocked&&<label className="field ai-access-key"><span>Generation access key</span><input type="password" value={accessKey} autoComplete="off" placeholder="Enter your AI ROOM access key" onChange={e=>{const key=e.target.value;setAccessKey(key);try{sessionStorage.setItem("ai-room-generation-key",key)}catch{}}}/><small>Kept only in this browser tab session. Required to authorize paid generation.</small></label>}
             {error&&<div className="error-banner">{error}</div>}
             <div className="generate-row"><div><small>Est. fal.ai charge · {duration} · {quality}</small><strong>{estimate===null?"Unavailable":`~${estimate.toFixed(2)} USD`}</strong><small>Estimated only · charged from existing fal.ai credit when submitted, not a live balance. <a href="https://fal.ai/dashboard/billing" target="_blank" rel="noopener noreferrer">Check actual balance at fal.ai ↗</a></small></div><button className="generate" disabled={!canGenerate||submitting} onClick={generate}>{submitting?"Submitting…":"Generate video ✦"}</button></div>
           </section>
-          <aside className="preview card">{readyVideo?<><video className="result-video" src={readyVideo} controls playsInline/>{readyJob&&resultActions(readyJob)}</>:<div className="preview-box"><div className="play">▶</div><strong>Your video appears here</strong><span>Generate a clip to preview it.</span></div>}<div className="preview-meta"><span>{model}</span><span>{ratio}</span><span>{duration}</span><span>{quality}</span></div></aside>
+          <aside className="preview card">{readyVideo?<><video className="result-video" src={readyVideo} controls playsInline/>{readyJob&&resultActions(readyJob)}</>:<div className="preview-box"><div className="play">▶</div><strong>Your video appears here</strong><span>Generate a clip to preview it.</span></div>}<div className="preview-meta">{(readyJob?[readyJob.model,readyJob.aspect,readyJob.duration,readyJob.quality]:[model,ratio,duration,quality]).filter(Boolean).map((detail,index)=><span key={`${index}-${detail}`}>{detail}</span>)}</div></aside>
         </div>
         <section className="queue card"><div className="section-head"><div><span className="kicker">QUEUE</span><h2>Recent generations</h2></div><span>{jobs.length} jobs</span></div>
           {jobs.length===0?<div className="empty">No generations yet. Your first job will appear here.</div>:jobs.slice(0,8).map(j=><div className="job" key={j.id}><div className="thumb">✦</div><div><strong>{j.prompt}</strong><span>{j.model} · {displayTime(j)}{j.estimatedCostUsd!==undefined?` · est. ${j.estimatedCostUsd.toFixed(2)}`:""}</span>{j.error&&<div className="error-banner" role="status">{j.error}</div>}{resultActions(j)}</div><b>{statusLabel(j)}</b></div>)}

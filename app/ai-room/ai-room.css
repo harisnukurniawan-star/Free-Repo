@@ -96,3 +96,10 @@
 .ai-room-route .fullscreen-close{position:absolute;right:-8px;top:-40px;width:32px;height:32px;border:1px solid #4b5563;border-radius:999px;background:#111827;color:#fff;font-size:20px;cursor:pointer}
 @media(max-width:900px){.ai-room-route .usage-cards{grid-template-columns:1fr 1fr}}
 @media(max-width:520px){.ai-room-route .usage-cards{grid-template-columns:1fr}.ai-room-route .result-actions{gap:5px}}
+
+/* Keep the operator access gate readable on desktop and smaller screens. */
+.ai-room-route .ai-access-key{display:block;margin-top:14px}
+.ai-room-route .ai-access-key input{width:100%;min-height:40px;padding:9px 11px;border:1px solid #d1d5db;border-radius:9px;background:#fff;color:#111827;font:inherit}
+.ai-room-route .ai-access-key input:focus{outline:2px solid #334155;outline-offset:1px}
+.ai-room-route .ai-access-key small{display:block;margin-top:6px;font-size:10px;color:#6b7280}
+@media(max-width:520px){.ai-room-route .generate-row{align-items:stretch;flex-direction:column;gap:12px}.ai-room-route .generate{width:100%}}
