@@ -77,7 +77,7 @@ export function normalizeStoredJob(value: unknown): StoredAiRoomJob | null {
     videoUrl: typeof value.videoUrl === "string" ? value.videoUrl : undefined,
     videoWidth: typeof value.videoWidth === "number" && Number.isInteger(value.videoWidth) && value.videoWidth > 0 ? value.videoWidth : undefined,
     videoHeight: typeof value.videoHeight === "number" && Number.isInteger(value.videoHeight) && value.videoHeight > 0 ? value.videoHeight : undefined,
-    preserveFace: value.preserveFace === true,
+    preserveFace: typeof value.preserveFace === "boolean" ? value.preserveFace : undefined,
     error: typeof value.error === "string" ? value.error : undefined,
   };
 }
