@@ -31,6 +31,15 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
   const [now,setNow]=useState(()=>Date.now());
   const [fullscreenJob,setFullscreenJob]=useState<StoredAiRoomJob|null>(null);
   const [copiedId,setCopiedId]=useState("");
+  const browserJobsAtHydration=useRef<StoredAiRoomJob[]>([]);
+  const [historySync,setHistorySync]=useState({
+    enabled:false,
+    connected:false,
+    locked:false,
+    loading:false,
+    key:"",
+    message:"",
+  });
 
   useEffect(()=>{
     const timer=window.setTimeout(()=>{
@@ -39,7 +48,9 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
         if(saved){
           const parsed=JSON.parse(saved) as unknown[];
           const normalized=parsed.map(normalizeStoredJob).filter((job):job is StoredAiRoomJob=>Boolean(job));
-          setJobs(normalized.map(j=>j.status==="Ready"&&!j.videoUrl?{...j,status:"Failed" as const,error:"This saved generation has no video URL."}:j));
+          const recovered=normalized.map(j=>j.status==="Ready"&&!j.videoUrl?{...j,status:"Failed" as const,error:"This saved generation has no video URL."}:j);
+          browserJobsAtHydration.current=recovered;
+          setJobs(recovered);
         }
       }catch{
         setError("Could not load saved generation history from this browser.");
@@ -50,6 +61,14 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
     return()=>window.clearTimeout(timer);
   },[]);
   useEffect(()=>{let active=true;fetch("/api/ai-room/health").then(async response=>{const data=await response.json();if(active)setProviderState({checked:true,provider:data.provider||"unknown",realGeneration:Boolean(data.realGeneration)})}).catch(()=>{if(active)setProviderState({checked:true,provider:"unavailable",realGeneration:false})});return()=>{active=false}},[]);
+
+  useEffect(()=>{
+    if(!hydrated)return;
+    const savedKey=sessionStorage.getItem("ai-room-history-key")||"";
+    if(savedKey)setHistorySync(current=>({...current,key:savedKey}));
+    void loadServerHistory(savedKey,false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[hydrated]);
   useEffect(()=>{
     if(!hydrated)return;
     try{
@@ -85,7 +104,69 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
   const completedJobs=jobs.filter(j=>j.videoUrl);
   const estimate=useMemo(()=>model.includes("Fast")?"Low":model.includes("14B")?"Medium":"Premium",[model]);
   const viewTitle=view==="generate"?"Create a video":view==="gallery"?"Gallery":view==="history"?"History":"Usage & Cost";
-  const viewSubtitle=view==="generate"?"Describe the scene. AI ROOM handles the generation workflow.":view==="gallery"?"Completed generations in one place.":view==="history"?"Recent generation activity and job status.":"Estimated generation spend and usage history for this browser.";
+  const historySource=historySync.connected?"synced server history":"this browser";
+  const viewSubtitle=view==="generate"?"Describe the scene. AI ROOM handles the generation workflow.":view==="gallery"?"Completed generations in one place.":view==="history"?`Recent generation activity from ${historySource}.`:`Estimated generation spend and usage history from ${historySource}.`;
+
+  function historyHeaders(key=historySync.key){
+    return key?{"x-ai-room-history-key":key}:{} as Record<string,string>;
+  }
+
+  async function loadServerHistory(key:string,announce=true){
+    setHistorySync(current=>({...current,loading:true,message:announce?"Checking server history…":current.message}));
+    try{
+      const response=await fetch("/api/ai-room/jobs",{cache:"no-store",headers:historyHeaders(key)});
+      const data=await response.json().catch(()=>({}));
+      if(response.status===401&&data.enabled){
+        setHistorySync(current=>({...current,enabled:true,connected:false,locked:true,loading:false,message:announce?"History sync key is required or incorrect.":""}));
+        return;
+      }
+      if(!response.ok)throw new Error(data.error||"Could not read server history.");
+      if(!data.enabled){
+        setHistorySync(current=>({...current,enabled:false,connected:false,locked:false,loading:false,message:""}));
+        return;
+      }
+      const serverJobs=(Array.isArray(data.jobs)?data.jobs:[]).map(normalizeStoredJob).filter((job:StoredAiRoomJob|null):job is StoredAiRoomJob=>Boolean(job));
+      sessionStorage.setItem("ai-room-history-key",key);
+      setJobs(serverJobs);
+      setHistorySync(current=>({...current,enabled:true,connected:true,locked:false,loading:false,key,message:announce?"Server history connected.":"Synced"}));
+    }catch(e){
+      setHistorySync(current=>({...current,loading:false,message:e instanceof Error?e.message:"Could not read server history."}));
+    }
+  }
+
+  async function unlockHistory(){
+    await loadServerHistory(historySync.key,true);
+  }
+
+  async function importBrowserHistory(){
+    if(!historySync.connected)return;
+    const source=browserJobsAtHydration.current;
+    if(!source.length){
+      setHistorySync(current=>({...current,message:"This browser has no earlier history to import."}));
+      return;
+    }
+    setHistorySync(current=>({...current,loading:true,message:"Importing browser history…"}));
+    try{
+      const response=await fetch("/api/ai-room/jobs",{
+        method:"PUT",
+        headers:{"Content-Type":"application/json",...historyHeaders()},
+        body:JSON.stringify({jobs:source}),
+      });
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(data.error||"Could not import browser history.");
+      await loadServerHistory(historySync.key,false);
+      setHistorySync(current=>({...current,loading:false,message:`Imported ${data.saved||0} browser jobs.`}));
+    }catch(e){
+      setHistorySync(current=>({...current,loading:false,message:e instanceof Error?e.message:"Could not import browser history."}));
+    }
+  }
+
+  function disconnectHistory(){
+    sessionStorage.removeItem("ai-room-history-key");
+    const local=browserJobsAtHydration.current;
+    setJobs(local);
+    setHistorySync(current=>({...current,connected:false,locked:current.enabled,key:"",message:"Server history disconnected. Browser history restored."}));
+  }
 
   function onReferenceImage(file?:File){
     setImageError("");
@@ -140,7 +221,17 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
     setView("generate");
   }
 
-  function deleteJob(id:string){
+  async function deleteJob(id:string){
+    if(historySync.connected){
+      try{
+        const response=await fetch(`/api/ai-room/jobs?id=${encodeURIComponent(id)}`,{method:"DELETE",headers:historyHeaders()});
+        const data=await response.json().catch(()=>({}));
+        if(!response.ok)throw new Error(data.error||"Could not delete server history.");
+      }catch(e){
+        setError(e instanceof Error?e.message:"Could not delete server history.");
+        return;
+      }
+    }
     setJobs(current=>current.filter(job=>job.id!==id));
     setFullscreenJob(current=>current?.id===id?null:current);
   }
@@ -152,7 +243,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
       <button onClick={()=>void copyVideoLink(job)}>{copiedId===job.id?"Copied ✓":"Copy link"}</button>
       <button onClick={()=>setFullscreenJob(job)}>Fullscreen</button>
       <button onClick={()=>regenerate(job)}>Regenerate</button>
-      <button className="danger" onClick={()=>deleteJob(job.id)}>Delete</button>
+      <button className="danger" onClick={()=>void deleteJob(job.id)}>Delete</button>
     </div>;
   }
 
@@ -241,7 +332,14 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
         {jobs.length===0?<div className="empty">No generation history yet.</div>:jobs.map(j=><div className="job" key={j.id}><div className="thumb">◷</div><div><strong>{j.prompt}</strong><span>{j.model} · {displayTime(j)}{j.estimatedCostUsd!==undefined?` · est. ${j.estimatedCostUsd.toFixed(2)}`:""}</span>{j.error&&<div className="error-banner" role="status">{j.error}</div>}{resultActions(j)}</div><b>{statusLabel(j)}</b></div>)}
       </section>}
 
-      {view==="usage"&&<UsageCostView jobs={jobs}/>}
+      {view==="usage"&&<UsageCostView
+        jobs={jobs}
+        historySync={historySync}
+        onHistoryKeyChange={key=>setHistorySync(current=>({...current,key,message:""}))}
+        onUnlockHistory={()=>void unlockHistory()}
+        onImportBrowserHistory={()=>void importBrowserHistory()}
+        onDisconnectHistory={disconnectHistory}
+      />}
       </div>
     </section>
     {fullscreenJob?.videoUrl&&<div className="fullscreen-layer" role="dialog" aria-modal="true" onClick={()=>setFullscreenJob(null)}><div className="fullscreen-content" onClick={event=>event.stopPropagation()}><button className="fullscreen-close" onClick={()=>setFullscreenJob(null)}>×</button><video src={fullscreenJob.videoUrl} controls autoPlay playsInline/>{resultActions(fullscreenJob)}</div></div>}
