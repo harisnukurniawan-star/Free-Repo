@@ -30,6 +30,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
   const [historyWritable,setHistoryWritable]=useState(true);
   const [referenceImage,setReferenceImage]=useState("");
   const [referenceName,setReferenceName]=useState("");
+  const [preserveFace,setPreserveFace]=useState(true);
   const [imageError,setImageError]=useState("");
   const [providerState,setProviderState]=useState<ProviderState>(initialProviderState);
   const [now,setNow]=useState(()=>Date.now());
@@ -150,6 +151,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
     setModel(nextModel);
     const nextMode=job.mode??(job.id.includes(":image:")?"image":"text");
     setMode(nextMode);
+    setPreserveFace(job.preserveFace!==false);
     setDuration(job.duration==="10s"&&(WAN_CATALOG[nextModel].durations as readonly string[]).includes("10s")?"10s":"5s");
     if(job.aspect)setRatio(job.aspect);
     setQuality((job.quality==="580p"||job.quality==="1080p")&&(WAN_CATALOG[nextModel].qualities as readonly string[]).includes(job.quality)?job.quality:"720p");
@@ -183,7 +185,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
     const submittedPrompt=prompt.trim();
     setSubmitting(true);setError("");
     try{
-      const response=await fetch("/api/ai-room/generate",{method:"POST",headers:{"Content-Type":"application/json","x-ai-room-access-key":accessKey},body:JSON.stringify({prompt:submittedPrompt,mode,model,duration,aspect:ratio,quality,imageUrl:mode==="image"?referenceImage:undefined})});
+      const response=await fetch("/api/ai-room/generate",{method:"POST",headers:{"Content-Type":"application/json","x-ai-room-access-key":accessKey},body:JSON.stringify({prompt:submittedPrompt,mode,model,duration,aspect:ratio,quality,imageUrl:mode==="image"?referenceImage:undefined,preserveFace:mode==="image"?preserveFace:false})});
       const data=await response.json().catch(()=>{throw new Error("Could not read the submission response. Check your existing jobs before trying again.")});
       if(!response.ok||!data.job)throw new Error(data.error||"Generation request failed");
       setJobs(current=>[{
@@ -193,6 +195,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
         status:"Queued",
         createdAt:data.job.createdAt||new Date().toISOString(),
         mode,
+        preserveFace:mode==="image"?preserveFace:undefined,
         duration,
         aspect:ratio,
         quality,
@@ -236,6 +239,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
               <label className="drop"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{onReferenceImage(e.target.files?.[0]);e.currentTarget.value=""}}/>{referenceImage?<><img className="reference-preview" src={referenceImage} alt="Reference preview"/><b>{referenceName}</b><span>Click to replace · JPG, PNG or WEBP · max 2.5 MB</span></>:<><b>＋ Add reference image</b><span>JPG, PNG or WEBP · max 2.5 MB</span></>}</label>
               {imageError&&<div className="error-banner">{imageError}</div>}
             </div>}
+            {mode==="image"&&<label className="face-consistency-option"><input type="checkbox" checked={preserveFace} onChange={event=>setPreserveFace(event.target.checked)}/><span><strong>Prioritaskan wajah sesuai foto</strong><small>Pertahankan ciri wajah, batasi perubahan sudut kepala, dan hindari penulisan ulang prompt. Eksperimental — kesamaan wajah tidak dijamin 100%.</small></span></label>}
             <label className="field"><span>Prompt</span><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="A cinematic night scene, soft light, natural camera movement..."/></label>
             <div className="options">
               <label><span>Model</span><select value={model} onChange={e=>{if(isWanModel(e.target.value))selectModel(e.target.value)}}>{WAN_MODEL_NAMES.map(name=><option key={name} value={name}>{name}{name==="Wan 3.0"?" · Recommended":""}</option>)}</select></label>
@@ -243,6 +247,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
               <label><span>Aspect</span><select value={ratio} onChange={e=>setRatio(e.target.value)}><option>16:9</option><option>9:16</option><option>1:1</option></select></label>
               <label><span>Quality</span><select value={quality} onChange={e=>setQuality(e.target.value as WanQuality)}>{modelConfig.qualities.map(value=><option key={value}>{value}</option>)}</select></label>
             </div>
+            {mode==="image"&&preserveFace&&<div className="info-banner">Untuk hasil lebih konsisten, gunakan foto wajah yang jelas, gerakan halus, dan rasio video yang mirip rasio foto. Wan tetap dapat mengubah wajah karena gambar dipakai sebagai frame awal, bukan identitas terkunci.</div>}
             {!providerState.realGeneration&&providerState.checked&&<div className="info-banner">Preview mode — connect the fal.ai provider to enable real video generation.</div>}
             {providerState.generationLocked&&<div className="info-banner" role="status">Paid generation is locked until the server administrator configures AI_ROOM_GENERATE_ACCESS_KEY (minimum 16 characters). No fal.ai credit can be charged while locked.</div>}
             {providerState.generationAuthRequired&&!providerState.generationLocked&&<label className="field ai-access-key"><span>Generation access key</span><input type="password" value={accessKey} autoComplete="off" placeholder="Enter your AI ROOM access key" onChange={e=>{const key=e.target.value;setAccessKey(key);try{sessionStorage.setItem("ai-room-generation-key",key)}catch{}}}/><small>Kept only in this browser tab session. Required to authorize paid generation.</small></label>}

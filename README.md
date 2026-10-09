@@ -55,3 +55,9 @@ The AI ROOM interface runs at `/ai-room`. Its public browser UI does **not** gra
 5. If the environment key is missing or under 16 characters, paid generation is deliberately **locked**. Existing read-only status checks and browser history remain accessible.
 
 This single shared key is intended only for a private/small-team app. For a public multi-user app, add per-user authentication, durable quotas, audited usage, and a central rate limiter before opening the Generate endpoint. Rate-card estimates are not fal.ai balances or invoices. No live paid generation is performed by automated tests.
+
+## Face consistency (Image → Video)
+
+AI ROOM provides an optional **Prioritaskan wajah sesuai foto** setting (on by default in Image → Video). It sends reference-preservation motion guidance and disables automatic prompt rewriting for the selected request. Wan 2.2 and 2.7 also receive a model-supported negative prompt discouraging facial identity changes. Wan 3.0/Prime do not accept that negative_prompt field, so AI ROOM does not send it.
+
+This setting is **experimental**: Wan I2V receives an initial frame, not a facial-identity lock. For the best chance of consistent facial details, provide a clearly visible, well-lit reference, match the output aspect ratio to the source image, and request limited head/camera movement. Turning this setting off keeps the previous model payload behavior. There is no extra model or fee and no paid test is run automatically.

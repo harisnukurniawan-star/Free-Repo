@@ -11,6 +11,7 @@ export type StoredAiRoomJob = {
   createdAt?: string;
   created?: string;
   mode?: AiRoomMode;
+  preserveFace?: boolean;
   duration?: string;
   aspect?: string;
   quality?: string;
@@ -67,6 +68,7 @@ export function normalizeStoredJob(value: unknown): StoredAiRoomJob | null {
     createdAt: typeof value.createdAt === "string" ? value.createdAt : undefined,
     created: typeof value.created === "string" ? value.created : undefined,
     mode,
+    preserveFace: typeof value.preserveFace === "boolean" ? value.preserveFace : undefined,
     duration,
     aspect: typeof value.aspect === "string" ? value.aspect : undefined,
     quality,

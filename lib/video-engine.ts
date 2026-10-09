@@ -1,6 +1,7 @@
 import "server-only";
 
 import { ApiError, createFalClient } from "@fal-ai/client";
+import { FACE_PRESERVATION_NEGATIVE, imageMotionPrompt } from "./ai-room-face";
 import { WAN_CATALOG, WAN_MODEL_NAMES, wanEndpointFor, isWanModel, type WanDuration, type WanModel, type WanQuality } from "./wan-models";
 export { wanEndpointFor } from "./wan-models";
 
@@ -12,6 +13,7 @@ export type VideoRequest = {
   aspect: "16:9" | "9:16" | "1:1";
   quality: WanQuality;
   imageUrl?: string;
+  preserveFace: boolean;
 };
 export type VideoJob = {
   id: string;
@@ -67,6 +69,10 @@ export function parseVideoRequest(value: unknown): VideoRequest {
   const duration = option(body.duration, ["5s", "10s"], "5s", "duration");
   const aspect = option(body.aspect, ["16:9", "9:16", "1:1"], "16:9", "aspect ratio");
   const quality = option(body.quality, ["580p", "720p", "1080p"], "720p", "resolution");
+  if (body.preserveFace !== undefined && typeof body.preserveFace !== "boolean") {
+    throw new VideoEngineError("Invalid face consistency setting.", 400, false);
+  }
+  const preserveFace = mode === "image" && body.preserveFace === true;
   if (!(WAN_CATALOG[model].durations as readonly string[]).includes(duration)) {
     throw new VideoEngineError("Unsupported duration for this model.", 400, false);
   }
@@ -86,7 +92,7 @@ export function parseVideoRequest(value: unknown): VideoRequest {
     }
     imageUrl = body.imageUrl;
   }
-  return { prompt: body.prompt.trim(), mode, model, duration, aspect, quality, imageUrl };
+  return { prompt: body.prompt.trim(), mode, model, duration, aspect, quality, imageUrl, preserveFace };
 }
 
 function parseJobId(id: string) {
@@ -184,7 +190,7 @@ class FalWanEngine implements VideoEngine {
     const tier = WAN_CATALOG[input.model].tier;
     const endpoint = wanEndpointFor(input.model, input.mode);
     const common = {
-      prompt: input.prompt,
+      prompt: imageMotionPrompt(input.prompt, input.mode, input.preserveFace),
       resolution: input.quality,
       aspect_ratio: input.aspect,
     };
@@ -206,6 +212,14 @@ class FalWanEngine implements VideoEngine {
       payload = { ...common, duration: Number.parseInt(input.duration, 10),
         audio: true, enable_prompt_expansion: true,
         ...(input.mode === "image" ? { start_image_url: input.imageUrl! } : {}) };
+    }
+    if (input.preserveFace && input.mode === "image") {
+      // All currently supported Wan I2V endpoints accept enable_prompt_expansion.
+      // Wan 3.0 has no negative_prompt field, so only pass it to 2.2/2.7.
+      payload.enable_prompt_expansion = false;
+      if (tier === "fast" || tier === "a14b" || tier === "v27") {
+        payload.negative_prompt = FACE_PRESERVATION_NEGATIVE;
+      }
     }
     try {
       const { client, signal } = this.client();

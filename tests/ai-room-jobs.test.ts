@@ -66,3 +66,16 @@ test("elapsed formatter handles seconds, minutes, and invalid timestamps", () =>
   assert.equal(formatElapsed("invalid",now),"");
   assert.equal(formatElapsed(undefined,now),"");
 });
+
+
+test("image reference preservation preference survives saved history reload", () => {
+  const normalized=normalizeStoredJob({
+    id:"v3:image:facejob", prompt:"Subtle smile", model:"Wan 3.0",
+    mode:"image", preserveFace:true, status:"Ready",
+    duration:"5s", quality:"1080p", videoUrl:"https://example.com/result.mp4",
+  });
+  assert.ok(normalized);
+  assert.equal(normalized.preserveFace,true);
+  assert.equal(normalized.videoUrl,"https://example.com/result.mp4");
+  assert.equal(normalizeStoredJob({id:"old:image:job",prompt:"Old",model:"Wan 2.2 Fast",status:"Failed"})?.preserveFace,undefined);
+});
