@@ -21,6 +21,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
   const [ratio,setRatio]=useState("16:9");
   const [quality,setQuality]=useState<WanQuality>("720p");
   const [preserveFace,setPreserveFace]=useState(true);
+  const [actionOnly,setActionOnly]=useState(true);
   const [jobs,setJobs]=useState<StoredAiRoomJob[]>([]);
   const [submitting,setSubmitting]=useState(false);
   const [accessKey,setAccessKey]=useState("");
@@ -164,6 +165,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
     const nextMode=job.mode??(job.id.includes(":image:")?"image":"text");
     setMode(nextMode);
     setPreserveFace(job.preserveFace!==false);
+    setActionOnly(job.actionOnly!==false);
     setDuration(job.duration==="10s"&&(WAN_CATALOG[nextModel].durations as readonly string[]).includes("10s")?"10s":"5s");
     if(job.aspect)setRatio(job.aspect);
     setQuality((job.quality==="580p"||job.quality==="1080p")&&(WAN_CATALOG[nextModel].qualities as readonly string[]).includes(job.quality)?job.quality:"720p");
@@ -195,7 +197,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
     if(!canGenerate||submissionInFlight.current)return;
     submissionInFlight.current=true;
     const submittedPrompt=prompt.trim();
-    const submission={mode,model,duration,aspect:ratio as AiRoomAspect,quality,preserveFace:mode==="image"&&preserveFace};
+    const submission={mode,model,duration,aspect:ratio as AiRoomAspect,quality,preserveFace:mode==="image"&&preserveFace,actionOnly};
     setSubmitting(true);setError("");
     try{
       // Prepare the first frame before making the single chargeable POST.
@@ -215,6 +217,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
         quality:submission.quality,
         estimatedCostUsd:estimateWanCostUsd({model:submission.model,mode:submission.mode,duration:submission.duration,quality:submission.quality})??undefined,
         preserveFace:submission.preserveFace,
+        actionOnly:submission.actionOnly,
       },...current]);
       setPrompt(current=>current.trim()===submittedPrompt?"":current);
     }catch(e){setError(e instanceof Error?e.message:"Generation request failed")}
@@ -256,7 +259,8 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
               <div className="info-banner">Reference image is fitted to the selected {ratio} frame without cropping the subject. Extra space uses a softly blurred background.</div>
               {imageError&&<div className="error-banner">{imageError}</div>}
             </div>}
-            <label className="field"><span>Prompt</span><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="A cinematic night scene, soft light, natural camera movement..."/></label>
+            <label className="field"><span>Prompt (what should happen in the video)</span><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="The person smiles, stands up and walks slowly toward the camera. No dialogue..."/></label>
+            <label className="face-consistency"><input type="checkbox" checked={actionOnly} onChange={e=>setActionOnly(e.target.checked)}/><span><strong>Action Only · no talking (recommended)</strong><small>Make the character perform the action in the prompt, not read it aloud. Generated audio is switched off for Wan 3.0 / Prime. Uncheck only if spoken dialogue is actually intended.</small></span></label>
             <div className="options">
               <label><span>Model</span><select value={model} onChange={e=>{if(isWanModel(e.target.value))selectModel(e.target.value)}}>{WAN_MODEL_NAMES.map(name=><option key={name} value={name}>{name}{name==="Wan 3.0"?" · Recommended":""}</option>)}</select></label>
               <label><span>Duration</span><select value={duration} onChange={e=>setDuration(e.target.value as WanDuration)}>{modelConfig.durations.map(value=><option key={value}>{value}</option>)}</select></label>
