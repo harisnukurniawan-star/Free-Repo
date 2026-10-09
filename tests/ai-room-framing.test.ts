@@ -15,8 +15,8 @@ test("a portrait is never cropped when framed to 16:9, 9:16 or 1:1",()=>{
     assert.ok(v.x>=0&&v.y>=0);
     assert.ok(v.x+v.fittedWidth<=v.width+0.01);
     assert.ok(v.y+v.fittedHeight<=v.height+0.01);
-    assert.equal(v.fittedWidth/v.fittedHeight,800/1200);
-    assert.equal(v.width/v.height,ASPECTS[aspect]);
+    assert.ok(Math.abs(v.fittedWidth/v.fittedHeight-800/1200)<1e-9);
+    assert.ok(Math.abs(v.width/v.height-ASPECTS[aspect])<1e-9);
   }
 });
 
