@@ -31,6 +31,10 @@ function useFal(t: test.TestContext) {
 test("Wan endpoint mapping covers all four supported model/mode combinations", () => {
   assert.equal(wanEndpointFor("Wan 2.2 Fast", "text"), "fal-ai/wan/v2.2-5b/text-to-video/distill");
   assert.equal(wanEndpointFor("Wan 2.2 Fast", "image"), "fal-ai/wan/v2.2-5b/image-to-video");
+  assert.equal(wanEndpointFor("Wan 2.2 Standard", "text"), "fal-ai/wan/v2.2-5b/text-to-video");
+  assert.equal(wanEndpointFor("Wan 2.2 Standard", "image"), "fal-ai/wan/v2.2-5b/image-to-video");
+  assert.equal(wanEndpointFor("Wan 2.6", "text"), "wan/v2.6/text-to-video");
+  assert.equal(wanEndpointFor("Wan 2.6", "image"), "wan/v2.6/image-to-video");
   assert.equal(wanEndpointFor("Wan 2.2 14B", "text"), "fal-ai/wan/v2.2-a14b/text-to-video");
   assert.equal(wanEndpointFor("Wan 2.2 14B", "image"), "fal-ai/wan/v2.2-a14b/image-to-video");
 });
@@ -215,6 +219,8 @@ test("14B text 5s submit uses 16 fps and 81 frames", async t => {
     aspect_ratio: "16:9",
     frames_per_second: 16,
     num_frames: 81,
+    video_quality: "maximum",
+    enable_prompt_expansion: true,
   });
 });
 
@@ -374,4 +380,88 @@ test("provider-reported completed error becomes a failed job without fetching re
   assert.equal(job.status, "failed");
   assert.equal(seen.length, 1);
   assert.match(seen[0], /\/status\?logs=0$/);
+});
+
+test("quality options reject invalid model-resolution-duration combinations", () => {
+  const base = {prompt:"A cinematic forest under golden sunset",mode:"text"};
+  assert.throws(() => parseVideoRequest({...base,model:"Wan 2.2 Standard",duration:"10s"}), /up to 5 seconds/);
+  assert.throws(() => parseVideoRequest({...base,model:"Wan 2.2 Fast",quality:"1080p"}), /1080p requires/);
+  assert.throws(() => parseVideoRequest({...base,model:"Wan 2.6",quality:"580p"}), /supports 720p or 1080p/);
+  assert.equal(parseVideoRequest({...base,model:"Wan 2.6"}).quality,"1080p");
+  assert.equal(parseVideoRequest({...base}).model,"Wan 2.2 Standard");
+});
+
+test("Standard 5B uses non-distilled text endpoint and maximum output encoding quality", async t => {
+  useFal(t);
+  let url = "";
+  let body = "";
+  globalThis.fetch = (async (input, init) => {
+    url = String(input);
+    body = String(init?.body ?? "");
+    return json({request_id:"std123"});
+  }) as typeof fetch;
+  const job=await getVideoEngine().submit(parseVideoRequest({
+    prompt:"A still-life flower on a table, slow dolly in",mode:"text",model:"Wan 2.2 Standard",quality:"720p"
+  }));
+  assert.equal(job.id,"standard:text:std123");
+  assert.equal(url,"https://queue.fal.run/fal-ai/wan/v2.2-5b/text-to-video");
+  const payload=JSON.parse(body);
+  assert.equal(payload.num_frames,121);
+  assert.equal(payload.video_quality,"maximum");
+  assert.equal(payload.enable_prompt_expansion,true);
+});
+
+test("Wan 2.6 submits native duration and 1080p without Wan 2.2 frame-count parameters", async t => {
+  useFal(t);
+  let url = "";
+  let body = "";
+  globalThis.fetch = (async (input, init) => {
+    url = String(input);
+    body = String(init?.body ?? "");
+    return json({request_id:"v26test"});
+  }) as typeof fetch;
+  const job=await getVideoEngine().submit(parseVideoRequest({
+    prompt:"An elegant glass building with steady cinematic camera",mode:"text",model:"Wan 2.6",duration:"5s",quality:"1080p"
+  }));
+  assert.equal(job.id,"v26:text:v26test");
+  assert.equal(url,"https://queue.fal.run/wan/v2.6/text-to-video");
+  const payload=JSON.parse(body);
+  assert.equal(payload.resolution,"1080p");
+  assert.equal(payload.duration,"5");
+  assert.equal(payload.enable_prompt_expansion,true);
+  assert.equal(payload.multi_shots,false);
+  assert.equal("num_frames" in payload,false);
+  assert.equal("frames_per_second" in payload,false);
+});
+
+test("Wan 2.6 image mode uses matching endpoint and reference payload", async t => {
+  useFal(t);
+  let url = "";
+  let body = "";
+  globalThis.fetch = (async (input, init) => {
+    url = String(input);
+    body = String(init?.body ?? "");
+    return json({request_id:"v26image"});
+  }) as typeof fetch;
+  const job=await getVideoEngine().submit(parseVideoRequest({
+    prompt:"A gentle push-in toward the subject",mode:"image",model:"Wan 2.6",duration:"10s",
+    quality:"720p",imageUrl:"data:image/png;base64,AAAA"
+  }));
+  assert.equal(job.id,"v26:image:v26image");
+  assert.equal(url,"https://queue.fal.run/wan/v2.6/image-to-video");
+  const payload=JSON.parse(body);
+  assert.equal(payload.image_url,"data:image/png;base64,AAAA");
+  assert.equal(payload.duration,"10");
+});
+
+test("new Wan 2.6 queue status still works without changing old job URLs", async t => {
+  useFal(t);
+  let requested="";
+  globalThis.fetch=(async input=>{
+    requested=String(input);
+    return json({status:"IN_QUEUE",request_id:"v26id"});
+  }) as typeof fetch;
+  const job=await getVideoEngine().status("v26:text:v26id");
+  assert.equal(job.status,"queued");
+  assert.match(requested,/^https:\/\/queue\.fal\.run\/wan\/requests\/v26id\/status\?logs=0$/);
 });
