@@ -65,7 +65,10 @@ This single shared key is intended only for a private/small-team app. For a publ
 3. Set `AI_ROOM_OCI_NAMESPACE`, `AI_ROOM_OCI_BUCKET`, `AI_ROOM_OCI_ACCESS_KEY_ID`, `AI_ROOM_OCI_SECRET_ACCESS_KEY` in Vercel server-side **sensitive** environment variables, with distinct secrets for production versus previews. The adapter uses the **path-style S3 compatibility endpoint in Batam**, not the HeatWave database.
 4. Create `AI_ROOM_SESSION_SECRET` using a cryptographically random 32+ byte value. Create individual user credentials as salted scrypt hashes (never plaintext):
    ```bash
-   node -e 'const {randomBytes,scryptSync}=require("node:crypto");const salt=randomBytes(16).toString("hex");const pw=process.argv[1];if(!pw||pw.length<16)throw Error("Use 16+ characters");console.log(JSON.stringify({id:"owner_a",salt,passwordHash:scryptSync(pw,salt,64,{N:16384,r:8,p:1,maxmem:64*1024*1024}).toString("hex")}))' 'REPLACE_WITH_A_LONG_UNIQUE_PASSWORD'
+   # Bash; input is silent and is NOT written in shell history.
+   read -rsp 'Private account password: ' AI_ROOM_SETUP_PASSWORD; echo
+   AI_ROOM_SETUP_PASSWORD="$AI_ROOM_SETUP_PASSWORD" node -e 'const {randomBytes,scryptSync}=require("node:crypto");const salt=randomBytes(16).toString("hex");const pw=process.env.AI_ROOM_SETUP_PASSWORD;if(!pw||pw.length<16)throw Error("Use 16+ characters");console.log(JSON.stringify({id:"owner_a",salt,passwordHash:scryptSync(pw,salt,64,{N:16384,r:8,p:1,maxmem:64*1024*1024}).toString("hex")}))'
+   unset AI_ROOM_SETUP_PASSWORD
    ```
    Place one or more resulting records in the JSON array `AI_ROOM_USERS_JSON`. In private mode, user login creates a 24-hour signed HttpOnly, Secure, SameSite=Strict cookie. The operator key is NOT distributed to browsers in this mode.
 5. Only after OCI bucket, credentials, and preview smoke test work, set `AI_ROOM_STORAGE_MODE=oci` in a **preview environment first**. Sign in as one user; generate a **non-sensitive** video; ensure Gallery, owner-only status, download, and Delete work. Check a second user receives HTTP 404 for the first user's job. Confirm the **OCI object is actually removed** after Delete.
