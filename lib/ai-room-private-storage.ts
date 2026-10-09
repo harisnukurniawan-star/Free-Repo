@@ -161,8 +161,13 @@ export async function privateSubmit(owner:string,body:unknown):Promise<ClientJob
     quality:input.quality,duration:input.duration,createdAt:created.createdAt,status:"queued",
   };
   // A successful provider request is chargeable; never retry submission after a persistence error.
-  await markUsage(owner,record.id);
-  await putRecord(record);
+  try{
+    await markUsage(owner,record.id);
+    await putRecord(record);
+  }catch{
+    // Never silently retry paid inference after the provider has already accepted a job.
+    throw new VideoEngineError("Provider accepted job "+record.id+" but OCI registration failed. Do NOT generate again; contact the operator to recover this job.",503,false);
+  }
   return publicRecord(record);
 }
 export function assertFalMediaUrl(raw:string):URL{
@@ -249,7 +254,10 @@ export async function privateList(owner:string):Promise<ClientJob[]>{
     try{
       const record=await getRecord(owner,id);
       return record.status==="deleted" || await wasDeleted(owner,id)?null:await signedRecord(record);
-    }catch{return null;}
+    }catch(error){
+      if(error instanceof VideoEngineError && error.httpStatus===404)return null;
+      throw error;
+    }
   }));
   return jobs.filter((job):job is ClientJob=>job!==null);
 }
