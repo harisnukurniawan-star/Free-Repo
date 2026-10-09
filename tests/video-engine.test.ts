@@ -60,8 +60,15 @@ test("Fast text submit uses the full model endpoint and expected default payload
   assert.equal(requests.length, 1);
   assert.equal(requests[0].method, "POST");
   assert.equal(requests[0].url, "https://queue.fal.run/fal-ai/wan/v2.2-5b/text-to-video/distill");
-  assert.deepEqual(JSON.parse(requests[0].body!), {
-    prompt: "A calm cinematic sunrise over the ocean",
+  const actionText = JSON.parse(requests[0].body!);
+  assert.match(actionText.prompt, /^A calm cinematic sunrise over the ocean\n/);
+  assert.match(actionText.prompt, /NOT dialogue/);
+  assert.equal(actionText.enable_prompt_expansion, false);
+  assert.match(actionText.negative_prompt, /lip sync/);
+  assert.deepEqual(actionText, {
+    prompt: actionText.prompt,
+    enable_prompt_expansion: false,
+    negative_prompt: actionText.negative_prompt,
     resolution: "720p",
     aspect_ratio: "16:9",
     frames_per_second: 24,
@@ -178,8 +185,13 @@ test("Fast image submit uses image endpoint and reference payload", async t => {
   assert.equal(job.id, "fast:image:req-fast-image");
   assert.equal(requests.length, 1);
   assert.equal(requests[0].url, "https://queue.fal.run/fal-ai/wan/v2.2-5b/image-to-video");
-  assert.deepEqual(JSON.parse(requests[0].body!), {
-    prompt: "Animate this reference image gently",
+  const actionImage = JSON.parse(requests[0].body!);
+  assert.match(actionImage.prompt, /^Animate this reference image gently\n/);
+  assert.match(actionImage.negative_prompt, /lip sync/);
+  assert.deepEqual(actionImage, {
+    prompt: actionImage.prompt,
+    enable_prompt_expansion: false,
+    negative_prompt: actionImage.negative_prompt,
     resolution: "580p",
     aspect_ratio: "9:16",
     frames_per_second: 24,
@@ -209,8 +221,13 @@ test("14B text 5s submit uses 16 fps and 81 frames", async t => {
 
   assert.equal(job.id, "a14b:text:req-14b-5");
   assert.equal(url, "https://queue.fal.run/fal-ai/wan/v2.2-a14b/text-to-video");
-  assert.deepEqual(JSON.parse(body), {
-    prompt: "A cinematic mountain landscape",
+  const action14B=JSON.parse(body);
+  assert.match(action14B.prompt,/^A cinematic mountain landscape\n/);
+  assert.equal(action14B.enable_prompt_expansion,false);
+  assert.deepEqual(action14B, {
+    prompt:action14B.prompt,
+    negative_prompt:action14B.negative_prompt,
+    enable_prompt_expansion:false,
     resolution: "720p",
     aspect_ratio: "16:9",
     frames_per_second: 16,
@@ -414,9 +431,11 @@ test("Wan 2.7 text and image payloads use duration, with image_url only for imag
   assert.equal(img.id,"v27:image:request27");
   assert.equal(calls.length,2);
   assert.equal(calls[0].url,"https://queue.fal.run/fal-ai/wan/v2.7/text-to-video");
-  assert.deepEqual(calls[0].payload,{prompt:"Sunrise scene",resolution:"1080p",aspect_ratio:"16:9",duration:10});
+  assert.match(String(calls[0].payload.prompt),/^Sunrise scene\n/);
+  assert.deepEqual(calls[0].payload,{prompt:calls[0].payload.prompt,resolution:"1080p",aspect_ratio:"16:9",duration:10,enable_prompt_expansion:false,negative_prompt:calls[0].payload.negative_prompt});
   assert.equal(calls[1].url,"https://queue.fal.run/fal-ai/wan/v2.7/image-to-video");
-  assert.deepEqual(calls[1].payload,{prompt:"Animate this",resolution:"720p",aspect_ratio:"16:9",duration:5,image_url:"data:image/png;base64,AAAA"});
+  assert.match(String(calls[1].payload.prompt),/^Animate this\n/);
+  assert.deepEqual(calls[1].payload,{prompt:calls[1].payload.prompt,resolution:"720p",aspect_ratio:"16:9",duration:5,image_url:"data:image/png;base64,AAAA",enable_prompt_expansion:false,negative_prompt:calls[1].payload.negative_prompt});
 });
 
 test("Wan 3.0 and Prime text/image payloads use start_image_url and preserve model-specific queue IDs", async t => {
@@ -437,14 +456,16 @@ test("Wan 3.0 and Prime text/image payloads use start_image_url and preserve mod
   assert.equal(calls.length,4);
   for(const [idx, modelId] of [[0,"wan-3.0"],[2,"wan-3.0-prime"]] as const){
     assert.equal(calls[idx].url,`https://queue.fal.run/alibaba/${modelId}/text-to-video`);
+    assert.match(String(calls[idx].payload.prompt),/NOT dialogue/i);
     assert.deepEqual(calls[idx].payload,{
-      prompt:"Portrait in studio",resolution:"1080p",aspect_ratio:"16:9",
-      duration:5,audio:true,enable_prompt_expansion:true,
+      prompt:calls[idx].payload.prompt,resolution:"1080p",aspect_ratio:"16:9",
+      duration:5,audio:false,enable_prompt_expansion:false,
     });
     assert.equal(calls[idx+1].url,`https://queue.fal.run/alibaba/${modelId}/image-to-video`);
+    assert.match(String(calls[idx+1].payload.prompt),/No speaking/i);
     assert.deepEqual(calls[idx+1].payload,{
-      prompt:"Animate the portrait",resolution:"720p",aspect_ratio:"16:9",
-      duration:10,audio:true,enable_prompt_expansion:true,start_image_url:"data:image/jpeg;base64,AAAA",
+      prompt:calls[idx+1].payload.prompt,resolution:"720p",aspect_ratio:"16:9",
+      duration:10,audio:false,enable_prompt_expansion:false,start_image_url:"data:image/jpeg;base64,AAAA",
     });
   }
 });
@@ -531,4 +552,57 @@ test("completed jobs return true provider video dimensions for ratio verificatio
   assert.equal(result.videoWidth,1080);
   assert.equal(result.videoHeight,1920);
   assert.equal(result.status,"completed");
+});
+
+
+test("action-only is on by default and invalid requests cannot enable speech accidentally", ()=>{
+  assert.equal(parseVideoRequest({prompt:"A person stands up"}).actionOnly,true);
+  assert.equal(parseVideoRequest({prompt:"A person stands up",actionOnly:false}).actionOnly,false);
+  assert.throws(()=>parseVideoRequest({prompt:"A person stands up",actionOnly:"false"}),/Invalid action-only setting/);
+});
+
+test("explicit dialogue opt-in restores Wan 3.0 generated audio without repeating paid submissions",async t=>{
+  useFal(t);
+  const seen:Array<{url:string;body:Record<string,unknown>}>=[];
+  globalThis.fetch=(async (input,init)=>{
+    seen.push({url:String(input),body:JSON.parse(String(init?.body))});
+    return json({request_id:"dialogue-mock"});
+  }) as typeof fetch;
+  for(const model of ["Wan 3.0","Wan 3.0 Prime"] as const){
+    const request=parseVideoRequest({prompt:"The actor speaks a short greeting",model,mode:"image",actionOnly:false,
+      duration:"5s",aspect:"9:16",quality:"720p",imageUrl:"data:image/png;base64,AAAA"});
+    const result=await getVideoEngine().submit(request);
+    assert.equal(result.status,"queued");
+  }
+  assert.equal(seen.length,2,"one mocked POST per explicit request");
+  for(const item of seen){
+    assert.equal(item.body.audio,true);
+    assert.equal(item.body.enable_prompt_expansion,true);
+    assert.equal(item.body.prompt,"The actor speaks a short greeting");
+    assert.equal(item.body.aspect_ratio,"9:16");
+  }
+});
+
+test("all five Wan variants treat directions as actions without speaking by default",async t=>{
+  useFal(t);
+  const seen:Array<Record<string,unknown>>=[];
+  globalThis.fetch=(async (_input,init)=>{
+    seen.push(JSON.parse(String(init?.body)));
+    return json({request_id:"silent-mock"});
+  }) as typeof fetch;
+  for(const model of ["Wan 2.2 Fast","Wan 2.2 14B","Wan 2.7","Wan 3.0","Wan 3.0 Prime"] as const){
+    await getVideoEngine().submit(parseVideoRequest({prompt:"She stands, smiles and waves",model,mode:"image",preserveFace:true,
+      aspect:"1:1",duration:"5s",quality:"720p",imageUrl:"data:image/png;base64,AAAA"}));
+  }
+  assert.equal(seen.length,5);
+  for(const [i,payload] of seen.entries()){
+    assert.equal(payload.aspect_ratio,"1:1");
+    assert.match(String(payload.prompt),/She stands, smiles and waves/);
+    assert.match(String(payload.prompt),/or lip sync/i);
+    assert.match(String(payload.prompt),/same facial structure/i);
+    assert.match(String(payload.prompt),/Follow the requested physical action/i);
+    assert.equal(payload.enable_prompt_expansion,false);
+    if(i<3)assert.match(String(payload.negative_prompt),/voiceover/);
+    else assert.equal(payload.audio,false);
+  }
 });
