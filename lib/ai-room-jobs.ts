@@ -31,6 +31,16 @@ export function estimateWanCostUsd(input: CostInput): number | null {
     if (input.duration !== "5s") return null;
     return input.mode === "image" ? 0.15 : 0.08;
   }
+  if (input.model === "Wan 2.2 Standard") {
+    if (input.duration !== "5s" || !["580p", "720p"].includes(input.quality)) return null;
+    return 0.15;
+  }
+  if (input.model === "Wan 2.6") {
+    const seconds = input.duration === "10s" ? 10 : input.duration === "5s" ? 5 : null;
+    const rate = input.quality === "1080p" ? 0.15 : input.quality === "720p" ? 0.10 : null;
+    if (seconds === null || rate === null) return null;
+    return Number((seconds * rate).toFixed(2));
+  }
   if (input.model === "Wan 2.2 14B") {
     const seconds = input.duration === "10s" ? 10 : input.duration === "5s" ? 5 : null;
     const rate = input.quality === "720p" ? 0.08 : input.quality === "580p" ? 0.06 : null;

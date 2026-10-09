@@ -1,3 +1,13 @@
+test("cost preview covers Standard and Wan 2.6 premium resolutions", () => {
+  assert.equal(estimateWanCostUsd({model:"Wan 2.2 Standard",mode:"text",duration:"5s",quality:"720p"}),0.15);
+  assert.equal(estimateWanCostUsd({model:"Wan 2.2 Standard",mode:"image",duration:"5s",quality:"720p"}),0.15);
+  assert.equal(estimateWanCostUsd({model:"Wan 2.2 Standard",mode:"text",duration:"10s",quality:"720p"}),null);
+  assert.equal(estimateWanCostUsd({model:"Wan 2.6",mode:"text",duration:"5s",quality:"720p"}),0.5);
+  assert.equal(estimateWanCostUsd({model:"Wan 2.6",mode:"image",duration:"5s",quality:"1080p"}),0.75);
+  assert.equal(estimateWanCostUsd({model:"Wan 2.6",mode:"text",duration:"10s",quality:"1080p"}),1.5);
+  assert.equal(estimateWanCostUsd({model:"Wan 2.6",mode:"text",duration:"5s",quality:"580p"}),null);
+});
+
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
