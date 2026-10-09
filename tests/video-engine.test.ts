@@ -375,3 +375,94 @@ test("provider-reported completed error becomes a failed job without fetching re
   assert.equal(seen.length, 1);
   assert.match(seen[0], /\/status\?logs=0$/);
 });
+
+
+test("new Wan model routes are mapped to their documented fal endpoints", () => {
+  assert.equal(wanEndpointFor("Wan 2.7", "text"), "fal-ai/wan/v2.7/text-to-video");
+  assert.equal(wanEndpointFor("Wan 2.7", "image"), "fal-ai/wan/v2.7/image-to-video");
+  assert.equal(wanEndpointFor("Wan 3.0", "text"), "alibaba/wan-3.0/text-to-video");
+  assert.equal(wanEndpointFor("Wan 3.0", "image"), "alibaba/wan-3.0/image-to-video");
+  assert.equal(wanEndpointFor("Wan 3.0 Prime", "text"), "alibaba/wan-3.0-prime/text-to-video");
+  assert.equal(wanEndpointFor("Wan 3.0 Prime", "image"), "alibaba/wan-3.0-prime/image-to-video");
+});
+
+test("new Wan models have safe resolution/duration validation and published cost estimates", async () => {
+  const {estimateWanCost} = await import("../lib/wan-models");
+  assert.equal(estimateWanCost("Wan 2.7", "text", "5s", "1080p"), 0.75);
+  assert.equal(estimateWanCost("Wan 3.0", "image", "5s", "1080p"), 1);
+  assert.equal(estimateWanCost("Wan 3.0 Prime", "text", "5s", "1080p"), 1.4000000000000001);
+  assert.equal(estimateWanCost("Wan 3.0 Prime", "text", "10s", "720p"), 1.4000000000000001);
+  assert.equal(estimateWanCost("Wan 2.2 Fast", "text", "5s", "720p"), 0.08);
+  assert.equal(estimateWanCost("Wan 2.2 Fast", "image", "5s", "720p"), 0.15);
+  assert.equal(estimateWanCost("Wan 2.7", "text", "5s", "580p"), null);
+  assert.throws(() => parseVideoRequest({prompt:"Example cinematic scene",model:"Wan 3.0",quality:"580p"}), /Unsupported resolution/);
+  assert.throws(() => parseVideoRequest({prompt:"Example cinematic scene",model:"Wan 2.2 Fast",quality:"1080p"}), /Unsupported resolution/);
+  assert.throws(() => parseVideoRequest({prompt:"Example cinematic scene",model:"Wan 2.2 Fast",duration:"10s"}), /Unsupported duration/);
+  assert.throws(() => parseVideoRequest({prompt:"Example cinematic scene",model:"Wan 99",quality:"720p"}), /Unsupported model/);
+});
+
+test("Wan 2.7 text and image payloads use duration, with image_url only for image mode", async t => {
+  useFal(t);
+  const calls: Array<{url:string;payload:Record<string,unknown>}> = [];
+  globalThis.fetch = (async (input, init) => {
+    calls.push({url: String(input), payload: JSON.parse(String(init?.body)) as Record<string,unknown>});
+    return json({request_id: "request27"});
+  }) as typeof fetch;
+  const engine=getVideoEngine();
+  const text=await engine.submit(parseVideoRequest({prompt:"Sunrise scene",model:"Wan 2.7",mode:"text",duration:"10s",quality:"1080p"}));
+  const img=await engine.submit(parseVideoRequest({prompt:"Animate this",model:"Wan 2.7",mode:"image",duration:"5s",quality:"720p",imageUrl:"data:image/png;base64,AAAA"}));
+  assert.equal(text.id,"v27:text:request27");
+  assert.equal(img.id,"v27:image:request27");
+  assert.equal(calls.length,2);
+  assert.equal(calls[0].url,"https://queue.fal.run/fal-ai/wan/v2.7/text-to-video");
+  assert.deepEqual(calls[0].payload,{prompt:"Sunrise scene",resolution:"1080p",aspect_ratio:"16:9",duration:10});
+  assert.equal(calls[1].url,"https://queue.fal.run/fal-ai/wan/v2.7/image-to-video");
+  assert.deepEqual(calls[1].payload,{prompt:"Animate this",resolution:"720p",aspect_ratio:"16:9",duration:5,image_url:"data:image/png;base64,AAAA"});
+});
+
+test("Wan 3.0 and Prime text/image payloads use start_image_url and preserve model-specific queue IDs", async t => {
+  useFal(t);
+  const calls: Array<{url:string;payload:Record<string,unknown>}> = [];
+  globalThis.fetch = (async (input, init) => {
+    calls.push({url: String(input), payload: JSON.parse(String(init?.body)) as Record<string,unknown>});
+    return json({request_id: "request3"});
+  }) as typeof fetch;
+  const engine=getVideoEngine();
+  for(const model of ["Wan 3.0","Wan 3.0 Prime"] as const){
+    const tier=model==="Wan 3.0"?"v3":"v3prime";
+    const text=await engine.submit(parseVideoRequest({prompt:"Portrait in studio",model,mode:"text",duration:"5s",quality:"1080p"}));
+    const img=await engine.submit(parseVideoRequest({prompt:"Animate the portrait",model,mode:"image",duration:"10s",quality:"720p",imageUrl:"data:image/jpeg;base64,AAAA"}));
+    assert.equal(text.id,`${tier}:text:request3`);
+    assert.equal(img.id,`${tier}:image:request3`);
+  }
+  assert.equal(calls.length,4);
+  for(const [idx, modelId] of [[0,"wan-3.0"],[2,"wan-3.0-prime"]] as const){
+    assert.equal(calls[idx].url,`https://queue.fal.run/alibaba/${modelId}/text-to-video`);
+    assert.deepEqual(calls[idx].payload,{
+      prompt:"Portrait in studio",resolution:"1080p",aspect_ratio:"16:9",
+      duration:5,audio:true,enable_prompt_expansion:true,
+    });
+    assert.equal(calls[idx+1].url,`https://queue.fal.run/alibaba/${modelId}/image-to-video`);
+    assert.deepEqual(calls[idx+1].payload,{
+      prompt:"Animate the portrait",resolution:"720p",aspect_ratio:"16:9",
+      duration:10,audio:true,enable_prompt_expansion:true,start_image_url:"data:image/jpeg;base64,AAAA",
+    });
+  }
+});
+
+test("new-version queued jobs remain pollable after the page reloads", async t => {
+  useFal(t);
+  const seen: string[]=[];
+  globalThis.fetch = (async input => {
+    seen.push(String(input));
+    return json({status:"IN_QUEUE",request_id:"saved123"});
+  }) as typeof fetch;
+  const engine=getVideoEngine();
+  for(const id of ["v27:text:saved123","v27:image:saved123","v3:text:saved123","v3:image:saved123","v3prime:text:saved123","v3prime:image:saved123"]){
+    const result=await engine.status(id);
+    assert.equal(result.id,id);
+    assert.equal(result.status,"queued");
+  }
+  assert.equal(seen.length,6);
+  assert.ok(seen.every(url=>url.includes("/requests/saved123/status?logs=0")));
+});
