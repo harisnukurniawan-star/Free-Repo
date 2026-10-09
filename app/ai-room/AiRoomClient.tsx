@@ -206,17 +206,17 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
       setJobs(current=>[{
         id:data.job.id,
         prompt:submittedPrompt,
-        model,
+        model:submission.model,
         status:"Queued",
         createdAt:data.job.createdAt||new Date().toISOString(),
-        mode,
-        duration,
-        aspect:ratio,
-        quality,
-        estimatedCostUsd:estimateWanCostUsd({model,mode,duration,quality})??undefined,
+        mode:submission.mode,
+        duration:submission.duration,
+        aspect:submission.aspect,
+        quality:submission.quality,
+        estimatedCostUsd:estimateWanCostUsd({model:submission.model,mode:submission.mode,duration:submission.duration,quality:submission.quality})??undefined,
         preserveFace:submission.preserveFace,
       },...current]);
-      setPrompt("");
+      setPrompt(current=>current.trim()===submittedPrompt?"":current);
     }catch(e){setError(e instanceof Error?e.message:"Generation request failed")}
     finally{submissionInFlight.current=false;setSubmitting(false)}
   }
@@ -251,7 +251,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
           <section className="composer card">
             <div className="tabs"><button onClick={()=>setMode("text")} className={mode==="text"?"active":""}>Text → Video</button><button onClick={()=>setMode("image")} className={mode==="image"?"active":""}>Image → Video</button></div>
             {mode==="image"&&<div>
-              <label className="drop"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{onReferenceImage(e.target.files?.[0]);e.currentTarget.value=""}}/>{referenceImage?<><div className="reference-frame" style={{aspectRatio:aspectValue(ratio)}}><img className="reference-preview" src={referenceImage} alt="Reference preview fitted without cropping"/></div><b>{referenceName}</b><span>Click to replace · JPG, PNG or WEBP · max 2.5 MB</span></>:<><b>＋ Add reference image</b><span>JPG, PNG or WEBP · max 2.5 MB</span></>}</label>
+              <label className="drop"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{onReferenceImage(e.target.files?.[0]);e.currentTarget.value=""}}/>{referenceImage?<><div className="reference-frame" style={{aspectRatio:aspectValue(ratio),width:ratio==="9:16"?"min(100%,168px)":ratio==="1:1"?"min(100%,220px)":"min(100%,280px)"}}><img className="reference-preview" src={referenceImage} alt="Reference preview fitted without cropping"/></div><b>{referenceName}</b><span>Click to replace · JPG, PNG or WEBP · max 2.5 MB</span></>:<><b>＋ Add reference image</b><span>JPG, PNG or WEBP · max 2.5 MB</span></>}</label>
               <label className="face-consistency"><input type="checkbox" checked={preserveFace} onChange={e=>setPreserveFace(e.target.checked)}/><span><strong>Keep face consistent (recommended)</strong><small>Tries to preserve the person\u0027s facial features from the uploaded photo. Actual results depend on the model.</small></span></label>
               <div className="info-banner">Reference image is fitted to the selected {ratio} frame without cropping the subject. Extra space uses a softly blurred background.</div>
               {imageError&&<div className="error-banner">{imageError}</div>}
