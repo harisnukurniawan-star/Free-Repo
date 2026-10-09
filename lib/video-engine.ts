@@ -5,10 +5,10 @@ import { ApiError, createFalClient } from "@fal-ai/client";
 export type VideoRequest = {
   prompt: string;
   mode: "text" | "image";
-  model: "Wan 2.2 Fast" | "Wan 2.2 14B";
+  model: "Wan 2.2 Fast" | "Wan 2.2 Standard" | "Wan 2.2 14B" | "Wan 2.6";
   duration: "5s" | "10s";
   aspect: "16:9" | "9:16" | "1:1";
-  quality: "580p" | "720p";
+  quality: "580p" | "720p" | "1080p";
   imageUrl?: string;
 };
 export type VideoJob = {
@@ -37,16 +37,30 @@ const ENDPOINTS = {
     text: "fal-ai/wan/v2.2-5b/text-to-video/distill",
     image: "fal-ai/wan/v2.2-5b/image-to-video",
   },
+  standard: {
+    text: "fal-ai/wan/v2.2-5b/text-to-video",
+    image: "fal-ai/wan/v2.2-5b/image-to-video",
+  },
   a14b: {
     text: "fal-ai/wan/v2.2-a14b/text-to-video",
     image: "fal-ai/wan/v2.2-a14b/image-to-video",
   },
+  v26: {
+    text: "wan/v2.6/text-to-video",
+    image: "wan/v2.6/image-to-video",
+  },
 } as const;
 type Tier = keyof typeof ENDPOINTS;
 
+function tierFor(model: VideoRequest["model"]): Tier {
+  if (model === "Wan 2.6") return "v26";
+  if (model === "Wan 2.2 14B") return "a14b";
+  if (model === "Wan 2.2 Standard") return "standard";
+  return "fast";
+}
+
 export function wanEndpointFor(model: VideoRequest["model"], mode: VideoRequest["mode"]) {
-  const tier: Tier = model === "Wan 2.2 14B" ? "a14b" : "fast";
-  return ENDPOINTS[tier][mode];
+  return ENDPOINTS[tierFor(model)][mode];
 }
 
 const REQUEST_ID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/;
@@ -68,12 +82,18 @@ export function parseVideoRequest(value: unknown): VideoRequest {
     throw new VideoEngineError("Prompt must contain at least 3 characters.", 400, false);
   }
   const mode = option(body.mode, ["text", "image"], "text", "generation mode");
-  const model = option(body.model, ["Wan 2.2 Fast", "Wan 2.2 14B"], "Wan 2.2 Fast", "model");
+  const model = option(body.model, ["Wan 2.2 Fast", "Wan 2.2 Standard", "Wan 2.2 14B", "Wan 2.6"], "Wan 2.2 Standard", "model");
   const duration = option(body.duration, ["5s", "10s"], "5s", "duration");
   const aspect = option(body.aspect, ["16:9", "9:16", "1:1"], "16:9", "aspect ratio");
-  const quality = option(body.quality, ["580p", "720p"], "720p", "resolution");
-  if (model === "Wan 2.2 Fast" && duration === "10s") {
-    throw new VideoEngineError("Wan 2.2 Fast supports up to 5 seconds.", 400, false);
+  const quality = option(body.quality, ["580p", "720p", "1080p"], model === "Wan 2.6" ? "1080p" : "720p", "resolution");
+  if ((model === "Wan 2.2 Fast" || model === "Wan 2.2 Standard") && duration === "10s") {
+    throw new VideoEngineError("Wan 2.2 5B supports up to 5 seconds.", 400, false);
+  }
+  if (model === "Wan 2.6" && quality === "580p") {
+    throw new VideoEngineError("Wan 2.6 supports 720p or 1080p.", 400, false);
+  }
+  if (model !== "Wan 2.6" && quality === "1080p") {
+    throw new VideoEngineError("1080p requires Wan 2.6.", 400, false);
   }
   let imageUrl: string | undefined;
   if (mode === "image") {
@@ -96,7 +116,7 @@ function parseJobId(id: string) {
   // Early versions stored a raw request ID for the default Fast text endpoint.
   const [tier, mode, requestId] = parts.length === 1 ? ["fast", "text", id] : parts;
   if ((parts.length !== 1 && parts.length !== 3) ||
-      (tier !== "fast" && tier !== "a14b") ||
+      (tier !== "fast" && tier !== "standard" && tier !== "a14b" && tier !== "v26") ||
       (mode !== "text" && mode !== "image") || !REQUEST_ID.test(requestId ?? "")) {
     throw new VideoEngineError("Invalid video job ID.", 400, false);
   }
@@ -183,20 +203,29 @@ class FalWanEngine implements VideoEngine {
 
   async submit(value: VideoRequest): Promise<VideoJob> {
     const input = parseVideoRequest(value);
-    const tier: Tier = input.model === "Wan 2.2 14B" ? "a14b" : "fast";
+    const tier = tierFor(input.model);
     const endpoint = wanEndpointFor(input.model, input.mode);
-    // The four official Wan schemas use frame counts (17..161), not duration.
-    // 121 at 24 fps is about 5s; 81/161 at 16 fps are about 5s/10s.
-    const common = {
-      prompt: input.prompt,
-      resolution: input.quality,
-      aspect_ratio: input.aspect,
-      frames_per_second: tier === "fast" ? 24 : 16,
-      num_frames: input.duration === "10s" ? 161 : tier === "fast" ? 121 : 81,
-    };
-    const payload = input.mode === "image"
-      ? { ...common, image_url: input.imageUrl! }
-      : common;
+    // Wan 2.6 takes a duration string, unlike Wan 2.2's frame count API.
+    // Advanced Wan 2.2 modes request maximum output encoding quality.
+    const payload = tier === "v26"
+      ? {
+          prompt: input.prompt,
+          resolution: input.quality,
+          aspect_ratio: input.aspect,
+          duration: input.duration.slice(0, -1),
+          enable_prompt_expansion: true,
+          multi_shots: false,
+          ...(input.mode === "image" ? { image_url: input.imageUrl! } : {}),
+        }
+      : {
+          prompt: input.prompt,
+          resolution: input.quality,
+          aspect_ratio: input.aspect,
+          frames_per_second: tier === "a14b" ? 16 : 24,
+          num_frames: input.duration === "10s" ? 161 : tier === "a14b" ? 81 : 121,
+          ...(tier === "fast" ? {} : { video_quality: "maximum", enable_prompt_expansion: true }),
+          ...(input.mode === "image" ? { image_url: input.imageUrl! } : {}),
+        };
     try {
       const { client, signal } = this.client();
       const queued = await client.queue.submit(endpoint, { input: payload, abortSignal: signal });
