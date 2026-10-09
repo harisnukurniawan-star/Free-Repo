@@ -465,3 +465,70 @@ test("new-version queued jobs remain pollable after the page reloads", async t =
   assert.equal(seen.length,6);
   assert.ok(seen.every(url=>url.includes("/requests/saved123/status?logs=0")));
 });
+
+
+test("every Wan model/mode sends each selected output ratio unchanged", async t => {
+  useFal(t);
+  const seen: Array<{url:string;body:Record<string,unknown>}> = [];
+  globalThis.fetch = (async (input, init) => {
+    seen.push({url:String(input),body:JSON.parse(String(init?.body))});
+    return json({request_id:"ratio-mock"});
+  }) as typeof fetch;
+  for(const model of ["Wan 2.2 Fast","Wan 2.2 14B","Wan 2.7","Wan 3.0","Wan 3.0 Prime"] as const){
+    for(const mode of ["text","image"] as const){
+      for(const aspect of ["16:9","9:16","1:1"] as const){
+        await getVideoEngine().submit(parseVideoRequest({
+          prompt:"Smooth simple movement, one continuous shot",
+          model,mode,aspect,duration:"5s",quality:"720p",
+          ...(mode==="image"?{imageUrl:"data:image/png;base64,AAAA"}:{}),
+        }));
+        const request=seen.at(-1)!;
+        assert.equal(request.body.aspect_ratio,aspect,`${model}/${mode}/${aspect}`);
+        assert.equal(request.url,`https://queue.fal.run/${wanEndpointFor(model,mode)}`);
+      }
+    }
+  }
+  assert.equal(seen.length,30,"exactly one mock POST for each supported combination");
+});
+
+test("face consistency disables prompt expansion and guides identity in all image models", async t => {
+  useFal(t);
+  const seen: Array<{url:string;body:Record<string,unknown>}> = [];
+  globalThis.fetch = (async (input, init) => {
+    seen.push({url:String(input),body:JSON.parse(String(init?.body))});
+    return json({request_id:"face-mock"});
+  }) as typeof fetch;
+  for(const model of ["Wan 2.2 Fast","Wan 2.2 14B","Wan 2.7","Wan 3.0","Wan 3.0 Prime"] as const){
+    await getVideoEngine().submit(parseVideoRequest({
+      prompt:"A gentle breeze moves the hair",
+      mode:"image",model,aspect:"9:16",quality:"720p",duration:"5s",
+      imageUrl:"data:image/jpeg;base64,AAAA",preserveFace:true,
+    }));
+  }
+  assert.equal(seen.length,5);
+  for(const {body} of seen){
+    assert.equal(body.aspect_ratio,"9:16");
+    assert.equal(body.enable_prompt_expansion,false);
+    assert.match(String(body.prompt),/same facial structure/i);
+    assert.match(String(body.prompt),/do not change identity/i);
+  }
+  assert.ok(seen.slice(0,3).every(v=>String(v.body.negative_prompt).includes("face morphing")));
+  assert.ok(seen.slice(3).every(v=>!("negative_prompt" in v.body)));
+  assert.throws(()=>parseVideoRequest({
+    prompt:"Nice scene",mode:"image",preserveFace:"true",
+    imageUrl:"data:image/png;base64,AAAA"
+  }),/Invalid preserve face setting/);
+});
+
+test("completed jobs return true provider video dimensions for ratio verification", async t => {
+  useFal(t);
+  globalThis.fetch = (async input => {
+    const url=String(input);
+    if(url.includes("/status"))return json({status:"COMPLETED",request_id:"dim123"});
+    return json({video:{url:"https://cdn.example.com/video.mp4",width:1080,height:1920}});
+  }) as typeof fetch;
+  const result=await getVideoEngine().status("v3:image:dim123");
+  assert.equal(result.videoWidth,1080);
+  assert.equal(result.videoHeight,1920);
+  assert.equal(result.status,"completed");
+});

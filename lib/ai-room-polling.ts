@@ -1,6 +1,8 @@
 export type PollingUpdate = {
   status?: "queued" | "processing" | "completed" | "failed";
   videoUrl?: string;
+  videoWidth?: number;
+  videoHeight?: number;
   error?: string;
 };
 
@@ -51,6 +53,8 @@ async function readStatus(response: Response): Promise<PollingUpdate> {
   return {
     status: job.status as PollingUpdate["status"],
     videoUrl: typeof job.videoUrl === "string" ? job.videoUrl : undefined,
+    ...(typeof job.videoWidth === "number" && Number.isInteger(job.videoWidth) && job.videoWidth > 0 ? {videoWidth: job.videoWidth} : {}),
+    ...(typeof job.videoHeight === "number" && Number.isInteger(job.videoHeight) && job.videoHeight > 0 ? {videoHeight: job.videoHeight} : {}),
     error: job.status === "failed"
       ? typeof job.error === "string" ? job.error : "Video generation failed."
       : undefined,

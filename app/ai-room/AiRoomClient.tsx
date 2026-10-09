@@ -5,6 +5,7 @@ import { createVideoJobPoller } from "@/lib/ai-room-polling";
 import { WAN_CATALOG, WAN_MODEL_NAMES, isWanModel, type WanModel, type WanDuration, type WanQuality } from "@/lib/wan-models";
 import { estimateWanCostUsd, formatElapsed, normalizeStoredJob, type StoredAiRoomJob } from "@/lib/ai-room-jobs";
 import UsageCostView from "./UsageCostView";
+import {aspectValue, frameReferenceImage, matchesAspect, type AiRoomAspect} from "@/lib/ai-room-framing";
 
 type Mode="text"|"image";
 type View="generate"|"gallery"|"history"|"usage";
@@ -19,6 +20,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
   const [duration,setDuration]=useState<WanDuration>("5s");
   const [ratio,setRatio]=useState("16:9");
   const [quality,setQuality]=useState<WanQuality>("720p");
+  const [preserveFace,setPreserveFace]=useState(true);
   const [jobs,setJobs]=useState<StoredAiRoomJob[]>([]);
   const [submitting,setSubmitting]=useState(false);
   const [accessKey,setAccessKey]=useState("");
@@ -69,7 +71,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
   useEffect(()=>{
     if(!hydrated||!providerState.realGeneration)return;
     const session=createVideoJobPoller((id,update)=>{
-      setJobs(current=>current.map(j=>j.id===id?{...j,status:update.status?jobStatuses[update.status]:j.status,videoUrl:update.videoUrl||j.videoUrl,error:update.error}:j));
+      setJobs(current=>current.map(j=>j.id===id?{...j,status:update.status?jobStatuses[update.status]:j.status,videoUrl:update.videoUrl||j.videoUrl,videoWidth:update.videoWidth||j.videoWidth,videoHeight:update.videoHeight||j.videoHeight,error:update.error}:j));
     });
     poller.current=session;
     return()=>{session.stop();poller.current=null};
@@ -119,6 +121,17 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
     reader.readAsDataURL(file);
   }
 
+  function recordVideoDimensions(id:string, video:HTMLVideoElement){
+    const width=video.videoWidth, height=video.videoHeight;
+    if(!width||!height)return;
+    setJobs(current=>current.map(job=>job.id!==id||(job.videoWidth===width&&job.videoHeight===height)?job:{...job,videoWidth:width,videoHeight:height}));
+  }
+
+  function aspectMismatch(job:StoredAiRoomJob){
+    const match=matchesAspect(job.videoWidth??0,job.videoHeight??0,job.aspect);
+    return match===false?<div className="info-banner" role="status">Video from provider is {job.videoWidth}×{job.videoHeight}, which does not match requested {job.aspect}. Display is not cropped; download retains the original provider file.</div>:null;
+  }
+
   function displayTime(job:StoredAiRoomJob){
     if(job.createdAt){
       const date=new Date(job.createdAt);
@@ -150,6 +163,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
     setModel(nextModel);
     const nextMode=job.mode??(job.id.includes(":image:")?"image":"text");
     setMode(nextMode);
+    setPreserveFace(job.preserveFace!==false);
     setDuration(job.duration==="10s"&&(WAN_CATALOG[nextModel].durations as readonly string[]).includes("10s")?"10s":"5s");
     if(job.aspect)setRatio(job.aspect);
     setQuality((job.quality==="580p"||job.quality==="1080p")&&(WAN_CATALOG[nextModel].qualities as readonly string[]).includes(job.quality)?job.quality:"720p");
@@ -181,24 +195,28 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
     if(!canGenerate||submissionInFlight.current)return;
     submissionInFlight.current=true;
     const submittedPrompt=prompt.trim();
+    const submission={mode,model,duration,aspect:ratio as AiRoomAspect,quality,preserveFace:mode==="image"&&preserveFace};
     setSubmitting(true);setError("");
     try{
-      const response=await fetch("/api/ai-room/generate",{method:"POST",headers:{"Content-Type":"application/json","x-ai-room-access-key":accessKey},body:JSON.stringify({prompt:submittedPrompt,mode,model,duration,aspect:ratio,quality,imageUrl:mode==="image"?referenceImage:undefined})});
+      // Prepare the first frame before making the single chargeable POST.
+      const imageUrl=mode==="image"?await frameReferenceImage(referenceImage,submission.aspect):undefined;
+      const response=await fetch("/api/ai-room/generate",{method:"POST",headers:{"Content-Type":"application/json","x-ai-room-access-key":accessKey},body:JSON.stringify({prompt:submittedPrompt,...submission,imageUrl})});
       const data=await response.json().catch(()=>{throw new Error("Could not read the submission response. Check your existing jobs before trying again.")});
       if(!response.ok||!data.job)throw new Error(data.error||"Generation request failed");
       setJobs(current=>[{
         id:data.job.id,
         prompt:submittedPrompt,
-        model,
+        model:submission.model,
         status:"Queued",
         createdAt:data.job.createdAt||new Date().toISOString(),
-        mode,
-        duration,
-        aspect:ratio,
-        quality,
-        estimatedCostUsd:estimateWanCostUsd({model,mode,duration,quality})??undefined,
+        mode:submission.mode,
+        duration:submission.duration,
+        aspect:submission.aspect,
+        quality:submission.quality,
+        estimatedCostUsd:estimateWanCostUsd({model:submission.model,mode:submission.mode,duration:submission.duration,quality:submission.quality})??undefined,
+        preserveFace:submission.preserveFace,
       },...current]);
-      setPrompt("");
+      setPrompt(current=>current.trim()===submittedPrompt?"":current);
     }catch(e){setError(e instanceof Error?e.message:"Generation request failed")}
     finally{submissionInFlight.current=false;setSubmitting(false)}
   }
@@ -233,7 +251,9 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
           <section className="composer card">
             <div className="tabs"><button onClick={()=>setMode("text")} className={mode==="text"?"active":""}>Text → Video</button><button onClick={()=>setMode("image")} className={mode==="image"?"active":""}>Image → Video</button></div>
             {mode==="image"&&<div>
-              <label className="drop"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{onReferenceImage(e.target.files?.[0]);e.currentTarget.value=""}}/>{referenceImage?<><img className="reference-preview" src={referenceImage} alt="Reference preview"/><b>{referenceName}</b><span>Click to replace · JPG, PNG or WEBP · max 2.5 MB</span></>:<><b>＋ Add reference image</b><span>JPG, PNG or WEBP · max 2.5 MB</span></>}</label>
+              <label className="drop"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{onReferenceImage(e.target.files?.[0]);e.currentTarget.value=""}}/>{referenceImage?<><div className="reference-frame" style={{aspectRatio:aspectValue(ratio),width:ratio==="9:16"?"min(100%,168px)":ratio==="1:1"?"min(100%,220px)":"min(100%,280px)"}}><img className="reference-preview" src={referenceImage} alt="Reference preview fitted without cropping"/></div><b>{referenceName}</b><span>Click to replace · JPG, PNG or WEBP · max 2.5 MB</span></>:<><b>＋ Add reference image</b><span>JPG, PNG or WEBP · max 2.5 MB</span></>}</label>
+              <label className="face-consistency"><input type="checkbox" checked={preserveFace} onChange={e=>setPreserveFace(e.target.checked)}/><span><strong>Keep face consistent (recommended)</strong><small>Tries to preserve the person\u0027s facial features from the uploaded photo. Actual results depend on the model.</small></span></label>
+              <div className="info-banner">Reference image is fitted to the selected {ratio} frame without cropping the subject. Extra space uses a softly blurred background.</div>
               {imageError&&<div className="error-banner">{imageError}</div>}
             </div>}
             <label className="field"><span>Prompt</span><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="A cinematic night scene, soft light, natural camera movement..."/></label>
@@ -249,7 +269,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
             {error&&<div className="error-banner">{error}</div>}
             <div className="generate-row"><div><small>Est. fal.ai charge · {duration} · {quality}</small><strong>{estimate===null?"Unavailable":`~${estimate.toFixed(2)} USD`}</strong><small>Estimated only · charged from existing fal.ai credit when submitted, not a live balance. <a href="https://fal.ai/dashboard/billing" target="_blank" rel="noopener noreferrer">Check actual balance at fal.ai ↗</a></small></div><button className="generate" disabled={!canGenerate||submitting} onClick={generate}>{submitting?"Submitting…":"Generate video ✦"}</button></div>
           </section>
-          <aside className="preview card">{readyVideo?<><video className="result-video" src={readyVideo} controls playsInline/>{readyJob&&resultActions(readyJob)}</>:<div className="preview-box"><div className="play">▶</div><strong>Your video appears here</strong><span>Generate a clip to preview it.</span></div>}<div className="preview-meta">{(readyJob?[readyJob.model,readyJob.aspect,readyJob.duration,readyJob.quality]:[model,ratio,duration,quality]).filter(Boolean).map((detail,index)=><span key={`${index}-${detail}`}>{detail}</span>)}</div></aside>
+          <aside className="preview card">{readyVideo?<><video className="result-video" src={readyVideo} controls playsInline style={{aspectRatio:aspectValue(readyJob?.aspect)}} onLoadedMetadata={e=>{if(readyJob)recordVideoDimensions(readyJob.id,e.currentTarget)}}/>{readyJob&&aspectMismatch(readyJob)}{readyJob&&resultActions(readyJob)}</>:<div className="preview-box" style={{aspectRatio:aspectValue(ratio)}}><div className="play">▶</div><strong>Your {ratio} video appears here</strong><span>Generate a clip to preview it.</span></div>}<div className="preview-meta">{(readyJob?[readyJob.model,readyJob.aspect,readyJob.duration,readyJob.quality]:[model,ratio,duration,quality]).filter(Boolean).map((detail,index)=><span key={`${index}-${detail}`}>{detail}</span>)}</div></aside>
         </div>
         <section className="queue card"><div className="section-head"><div><span className="kicker">QUEUE</span><h2>Recent generations</h2></div><span>{jobs.length} jobs</span></div>
           {jobs.length===0?<div className="empty">No generations yet. Your first job will appear here.</div>:jobs.slice(0,8).map(j=><div className="job" key={j.id}><div className="thumb">✦</div><div><strong>{j.prompt}</strong><span>{j.model} · {displayTime(j)}{j.estimatedCostUsd!==undefined?` · est. ${j.estimatedCostUsd.toFixed(2)}`:""}</span>{j.error&&<div className="error-banner" role="status">{j.error}</div>}{resultActions(j)}</div><b>{statusLabel(j)}</b></div>)}
@@ -257,7 +277,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
       </>}
 
       {view==="gallery"&&<section className="queue card"><div className="section-head"><div><span className="kicker">GALLERY</span><h2>Completed videos</h2></div><span>{completedJobs.length} videos</span></div>
-        <div className="gallery-grid">{completedJobs.map(j=><article className="gallery-item" key={j.id}><video src={j.videoUrl} controls playsInline/><strong>{j.prompt}</strong><span>{j.model} · {displayTime(j)}</span>{resultActions(j)}</article>)}{completedJobs.length===0&&<div className="empty">Completed videos will appear here.</div>}</div>
+        <div className="gallery-grid">{completedJobs.map(j=><article className="gallery-item" key={j.id}><video src={j.videoUrl} controls playsInline style={{aspectRatio:aspectValue(j.aspect)}} onLoadedMetadata={e=>recordVideoDimensions(j.id,e.currentTarget)}/>{aspectMismatch(j)}<strong>{j.prompt}</strong><span>{j.model} · {displayTime(j)}</span>{resultActions(j)}</article>)}{completedJobs.length===0&&<div className="empty">Completed videos will appear here.</div>}</div>
       </section>}
 
       {view==="history"&&<section className="queue card"><div className="section-head"><div><span className="kicker">HISTORY</span><h2>Generation history</h2></div><span>{jobs.length} jobs</span></div>
@@ -267,6 +287,6 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
       {view==="usage"&&<UsageCostView jobs={jobs}/>}
       </div>
     </section>
-    {fullscreenJob?.videoUrl&&<div className="fullscreen-layer" role="dialog" aria-modal="true" onClick={()=>setFullscreenJob(null)}><div className="fullscreen-content" onClick={event=>event.stopPropagation()}><button className="fullscreen-close" onClick={()=>setFullscreenJob(null)}>×</button><video src={fullscreenJob.videoUrl} controls autoPlay playsInline/>{resultActions(fullscreenJob)}</div></div>}
+    {fullscreenJob?.videoUrl&&<div className="fullscreen-layer" role="dialog" aria-modal="true" onClick={()=>setFullscreenJob(null)}><div className="fullscreen-content" onClick={event=>event.stopPropagation()}><button className="fullscreen-close" onClick={()=>setFullscreenJob(null)}>×</button><video src={fullscreenJob.videoUrl} controls autoPlay playsInline style={{aspectRatio:aspectValue(fullscreenJob.aspect)}} onLoadedMetadata={e=>recordVideoDimensions(fullscreenJob.id,e.currentTarget)}/>{aspectMismatch(fullscreenJob)}{resultActions(fullscreenJob)}</div></div>}
   </main>
 }

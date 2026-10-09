@@ -57,7 +57,7 @@
 .ai-room-route .result-video{width:100%;min-height:330px;max-height:520px;object-fit:contain;border-radius:12px;background:#f3f4f6}
 .ai-room-route .gallery-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}
 .ai-room-route .gallery-item{min-width:0;border:1px solid #e5e7eb;border-radius:12px;padding:9px;background:#fff}
-.ai-room-route .gallery-item video{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:8px;background:#f3f4f6}
+.ai-room-route .gallery-item video{width:100%;height:auto;object-fit:contain;border-radius:8px;background:#0f172a;max-height:400px}
 .ai-room-route .gallery-item strong,.ai-room-route .gallery-item span{display:block}
 .ai-room-route .gallery-item strong{font-size:10px;margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#111827}
 .ai-room-route .gallery-item span{font-size:8px;color:#6b7280;margin-top:4px}
@@ -103,3 +103,15 @@
 .ai-room-route .ai-access-key input:focus{outline:2px solid #334155;outline-offset:1px}
 .ai-room-route .ai-access-key small{display:block;margin-top:6px;font-size:10px;color:#6b7280}
 @media(max-width:520px){.ai-room-route .generate-row{align-items:stretch;flex-direction:column;gap:12px}.ai-room-route .generate{width:100%}}
+
+/* Ratio-aware preview: never use "cover" for downloadable provider videos. */
+.ai-room-route .result-video{height:auto;min-height:0;object-fit:contain;background:#0f172a}
+.ai-room-route .preview-box{width:100%;height:auto;min-height:0;flex:0 0 auto;padding:18px 8px}
+.ai-room-route .reference-frame{width:min(100%,280px);max-height:none;background:#1f2937;border-radius:10px;overflow:hidden;display:grid;place-items:center;margin:0 auto 10px}
+.ai-room-route .reference-frame .reference-preview{width:100%;height:100%;max-height:none;object-fit:contain;border-radius:0;background:transparent;margin:0}
+.ai-room-route .face-consistency{display:flex;align-items:flex-start;gap:10px;margin:12px 0;border:1px solid #dbe3ee;border-radius:10px;background:#f8fafc;padding:11px 12px;color:#0f172a}
+.ai-room-route .face-consistency input{margin-top:2px;accent-color:#111827}
+.ai-room-route .face-consistency span{display:flex;flex-direction:column;gap:4px}
+.ai-room-route .face-consistency strong{font-size:11px}
+.ai-room-route .face-consistency small{font-size:10px;color:#64748b;line-height:1.5}
+.ai-room-route .gallery-item .info-banner{margin:6px 0}

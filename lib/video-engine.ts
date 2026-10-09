@@ -12,6 +12,7 @@ export type VideoRequest = {
   aspect: "16:9" | "9:16" | "1:1";
   quality: WanQuality;
   imageUrl?: string;
+  preserveFace?: boolean;
 };
 export type VideoJob = {
   id: string;
@@ -19,6 +20,8 @@ export type VideoJob = {
   provider: string;
   createdAt: string;
   videoUrl?: string;
+  videoWidth?: number;
+  videoHeight?: number;
 };
 export interface VideoEngine {
   name: string;
@@ -86,7 +89,11 @@ export function parseVideoRequest(value: unknown): VideoRequest {
     }
     imageUrl = body.imageUrl;
   }
-  return { prompt: body.prompt.trim(), mode, model, duration, aspect, quality, imageUrl };
+  if (body.preserveFace !== undefined && typeof body.preserveFace !== "boolean") {
+    throw new VideoEngineError("Invalid preserve face setting.", 400, false);
+  }
+  const preserveFace = mode === "image" && body.preserveFace === true;
+  return { prompt: body.prompt.trim(), mode, model, duration, aspect, quality, imageUrl, preserveFace };
 }
 
 function parseJobId(id: string) {
@@ -183,11 +190,18 @@ class FalWanEngine implements VideoEngine {
     const input = parseVideoRequest(value);
     const tier = WAN_CATALOG[input.model].tier;
     const endpoint = wanEndpointFor(input.model, input.mode);
+    // Only guide identity for reference-image mode; this is a best-effort prompt,
+    // not a face-recognition or biometric guarantee.
+    const keepFace = input.mode === "image" && input.preserveFace === true;
+    const scenePrompt = keepFace
+      ? `${input.prompt.trim()}\nPreserve the exact appearance of the person in the provided first-frame image: same facial structure, eyes, nose, mouth, skin tone, hair and proportions across all frames. Animate only natural subtle movement; do not change identity, age, or facial features. Keep one continuous shot.`
+      : input.prompt;
     const common = {
-      prompt: input.prompt,
+      prompt: scenePrompt,
       resolution: input.quality,
       aspect_ratio: input.aspect,
     };
+    const faceAvoid = "altered identity, different face, face morphing, changed facial features, warped eyes, unnatural face, extra facial features";
     let payload: Record<string, string | number | boolean>;
     if (tier === "fast" || tier === "a14b") {
       // Wan 2.2 uses frame counts, not a duration field.
@@ -196,15 +210,17 @@ class FalWanEngine implements VideoEngine {
         frames_per_second: tier === "fast" ? 24 : 16,
         num_frames: input.duration === "10s" ? 161 : tier === "fast" ? 121 : 81,
         ...(input.mode === "image" ? { image_url: input.imageUrl! } : {}),
+        ...(keepFace ? { enable_prompt_expansion: false, negative_prompt: faceAvoid } : {}),
       };
     } else if (tier === "v27") {
       // Wan 2.7 takes an integer duration and the first frame as image_url.
       payload = { ...common, duration: Number.parseInt(input.duration, 10),
-        ...(input.mode === "image" ? { image_url: input.imageUrl! } : {}) };
+        ...(input.mode === "image" ? { image_url: input.imageUrl! } : {}),
+        ...(keepFace ? { enable_prompt_expansion: false, negative_prompt: faceAvoid } : {}) };
     } else {
       // Wan 3.0/Prime take an integer duration and start_image_url.
       payload = { ...common, duration: Number.parseInt(input.duration, 10),
-        audio: true, enable_prompt_expansion: true,
+        audio: true, enable_prompt_expansion: !keepFace,
         ...(input.mode === "image" ? { start_image_url: input.imageUrl! } : {}) };
     }
     try {
@@ -246,7 +262,11 @@ class FalWanEngine implements VideoEngine {
       if (!validVideoUrl(videoUrl)) {
         throw new VideoEngineError("The completed video job did not contain a valid video URL.", 502, false);
       }
-      return { ...this.job(id, "completed"), videoUrl };
+      const width = result?.data?.video?.width;
+      const height = result?.data?.video?.height;
+      return { ...this.job(id, "completed"), videoUrl,
+        videoWidth: Number.isInteger(width) && width > 0 ? width : undefined,
+        videoHeight: Number.isInteger(height) && height > 0 ? height : undefined };
     } catch (error) {
       throw videoEngineError(error);
     }
