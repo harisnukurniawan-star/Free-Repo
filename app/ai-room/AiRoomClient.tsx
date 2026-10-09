@@ -27,6 +27,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
   const poller=useRef<ReturnType<typeof createVideoJobPoller>|null>(null);
   const [error,setError]=useState("");
   const [hydrated,setHydrated]=useState(false);
+  const [historyWritable,setHistoryWritable]=useState(true);
   const [referenceImage,setReferenceImage]=useState("");
   const [referenceName,setReferenceName]=useState("");
   const [imageError,setImageError]=useState("");
@@ -40,12 +41,14 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
       try{
         const saved=localStorage.getItem("ai-room-jobs");
         if(saved){
-          const parsed=JSON.parse(saved) as unknown[];
-          const normalized=parsed.map(normalizeStoredJob).filter((job):job is StoredAiRoomJob=>Boolean(job));
+          const parsed:unknown=JSON.parse(saved);
+          if(!Array.isArray(parsed))throw new Error("Invalid saved history");
+          const normalized=parsed.slice(0,50).map(normalizeStoredJob).filter((job):job is StoredAiRoomJob=>Boolean(job));
           setJobs(normalized.map(j=>j.status==="Ready"&&!j.videoUrl?{...j,status:"Failed" as const,error:"This saved generation has no video URL."}:j));
         }
       }catch{
-        setError("Could not load saved generation history from this browser.");
+        setHistoryWritable(false);
+        setError("Could not read saved browser history. It has been preserved instead of overwritten. New jobs will not be saved in this tab.");
       }finally{
         setHydrated(true);
       }
@@ -54,14 +57,14 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
   },[]);
   useEffect(()=>{let active=true;fetch("/api/ai-room/health").then(async response=>{const data=await response.json();if(active)setProviderState({checked:true,provider:data.provider||"unknown",realGeneration:Boolean(data.realGeneration),generationLocked:Boolean(data.generationLocked),generationAuthRequired:true})}).catch(()=>{if(active)setProviderState({checked:true,provider:"unavailable",realGeneration:false,generationLocked:true,generationAuthRequired:true})});return()=>{active=false}},[]);
   useEffect(()=>{
-    if(!hydrated)return;
+    if(!hydrated||!historyWritable)return;
     try{
       localStorage.setItem("ai-room-jobs",JSON.stringify(jobs.slice(0,50)));
     }catch{
       const timer=window.setTimeout(()=>setError("Could not save generation history in this browser. Keep this page open to follow your jobs."),0);
       return()=>window.clearTimeout(timer);
     }
-  },[jobs,hydrated]);
+  },[jobs,hydrated,historyWritable]);
 
   useEffect(()=>{
     if(!hydrated||!providerState.realGeneration)return;
@@ -104,6 +107,8 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
   function onReferenceImage(file?:File){
     const readId=++referenceReadId.current;
     setImageError("");
+    setReferenceImage("");
+    setReferenceName("");
     if(!file){setReferenceImage("");setReferenceName("");return}
     const allowed=["image/jpeg","image/png","image/webp"];
     if(!allowed.includes(file.type)){setImageError("Use JPG, PNG, or WEBP.");setReferenceImage("");setReferenceName("");return}
