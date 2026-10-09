@@ -217,15 +217,15 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
       <div className="side-foot">
         <span className={`status-dot ${providerState.realGeneration?"online":"offline"}`} />
         <div>
-          <strong>{providerState.realGeneration?"Wan engine ready":"Video engine unavailable"}</strong>
-          <small>{providerState.realGeneration?"fal.ai connected":"Check provider configuration"}</small>
+          <strong>{providerState.generationLocked?"Generation locked":providerState.realGeneration?"Wan engine ready":"Video engine unavailable"}</strong>
+          <small>{providerState.generationLocked?"Access key setup required":providerState.realGeneration?"fal.ai connected":"Check provider configuration"}</small>
         </div>
       </div>
     </aside>
 
     <section className="workspace ai-room-workspace">
       <div className="ai-main">
-      <header><div><span className="kicker">AI VIDEO GENERATOR</span><h1>{viewTitle}</h1><p>{viewSubtitle}</p></div><div className="badge">{providerState.realGeneration?"WAN LIVE":"MVP · DEMO MODE"}</div></header>
+      <header><div><span className="kicker">AI VIDEO GENERATOR</span><h1>{viewTitle}</h1><p>{viewSubtitle}</p></div><div className="badge">{providerState.generationLocked?"GENERATION LOCKED":providerState.realGeneration?"WAN LIVE":"MVP · DEMO MODE"}</div></header>
       <div className="ai-subnav"><button onClick={()=>setView("generate")} className={view==="generate"?"active":""}>✦ Generate</button><button onClick={()=>setView("gallery")} className={view==="gallery"?"active":""}>▣ Gallery</button><button onClick={()=>setView("history")} className={view==="history"?"active":""}>◷ History</button><button onClick={()=>setView("usage")} className={view==="usage"?"active":""}>◌ Usage & Cost</button></div>
 
       {view==="generate"&&<>
