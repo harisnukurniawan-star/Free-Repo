@@ -68,3 +68,33 @@
   .ai-room-route .gallery-grid{grid-template-columns:1fr 1fr}
 }
 @media(max-width:520px){.ai-room-route .gallery-grid{grid-template-columns:1fr}.ai-room-route .ai-subnav{overflow-x:auto}}
+
+
+.ai-room-route .result-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.ai-room-route .result-actions button,.ai-room-route .job-side button{border:1px solid #e5e7eb;background:#fff;color:#374151;border-radius:8px;padding:6px 8px;font-size:8px;cursor:pointer}
+.ai-room-route .result-actions button:hover,.ai-room-route .job-side button:hover{background:#f3f4f6;color:#111827}
+.ai-room-route .result-actions button.danger{color:#b42318;border-color:#fecaca;background:#fff7f7}
+.ai-room-route .job-side{display:flex;align-items:flex-end;gap:6px;flex-direction:column}
+.ai-room-route .usage-layout{display:grid;gap:14px}
+.ai-room-route .usage-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.ai-room-route .usage-stat{border:1px solid #e5e7eb;border-radius:14px;background:#fff;padding:16px;box-shadow:0 1px 2px rgba(15,23,42,.03)}
+.ai-room-route .usage-stat span,.ai-room-route .usage-stat small{display:block;color:#6b7280;font-size:9px}
+.ai-room-route .usage-stat strong{display:block;color:#111827;font-size:24px;letter-spacing:-.04em;margin:7px 0 5px}
+.ai-room-route .usage-table-card{margin-top:0}
+.ai-room-route .usage-table-wrap{overflow-x:auto;margin-top:12px}
+.ai-room-route .usage-table{width:100%;border-collapse:collapse;min-width:720px}
+.ai-room-route .usage-table th,.ai-room-route .usage-table td{padding:10px 9px;border-bottom:1px solid #e5e7eb;text-align:left;font-size:9px;color:#374151;white-space:nowrap}
+.ai-room-route .usage-table th{color:#6b7280;font-weight:700;background:#fafafa}
+.ai-room-route .usage-table td:nth-child(3){max-width:220px;overflow:hidden;text-overflow:ellipsis}
+.ai-room-route .usage-table td:last-child{font-weight:700;color:#111827}
+.ai-room-route .usage-note{font-size:9px;color:#6b7280;margin:12px 0 0;line-height:1.5}
+.ai-room-route .video-modal{position:fixed;inset:0;z-index:1000;background:rgba(3,7,18,.92);display:grid;place-items:center;padding:28px}
+.ai-room-route .video-modal video{width:min(1200px,95vw);max-height:88vh;border-radius:14px;background:#000;box-shadow:0 20px 70px rgba(0,0,0,.45)}
+.ai-room-route .video-modal-close{position:fixed;top:18px;right:22px;width:38px;height:38px;border:1px solid rgba(255,255,255,.25);border-radius:50%;background:rgba(255,255,255,.08);color:#fff;font-size:24px;cursor:pointer}
+@media(max-width:900px){
+  .ai-room-route .usage-cards{grid-template-columns:1fr}
+}
+
+
+.ai-room-route .action-toast{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:-4px 0 14px;border:1px solid #dbe3ee;background:#f8fafc;color:#475569;padding:9px 11px;border-radius:9px;font-size:10px}
+.ai-room-route .action-toast button{border:0;background:transparent;color:#64748b;font-size:16px;line-height:1;cursor:pointer}
