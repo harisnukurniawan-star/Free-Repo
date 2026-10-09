@@ -1,3 +1,5 @@
+import { estimateWanCost, isWanModel } from "./wan-models";
+
 export type AiRoomJobStatus = "Queued" | "Processing" | "Ready" | "Failed";
 export type AiRoomMode = "text" | "image";
 
@@ -27,17 +29,10 @@ export type CostInput = {
 // Rate card mirrored from the public fal.ai model pages.
 // This is an estimate for UX/budget visibility, not an invoice.
 export function estimateWanCostUsd(input: CostInput): number | null {
-  if (input.model === "Wan 2.2 Fast") {
-    if (input.duration !== "5s") return null;
-    return input.mode === "image" ? 0.15 : 0.08;
-  }
-  if (input.model === "Wan 2.2 14B") {
-    const seconds = input.duration === "10s" ? 10 : input.duration === "5s" ? 5 : null;
-    const rate = input.quality === "720p" ? 0.08 : input.quality === "580p" ? 0.06 : null;
-    if (seconds === null || rate === null) return null;
-    return Number((seconds * rate).toFixed(2));
-  }
-  return null;
+  if (!isWanModel(input.model)) return null;
+  if (input.duration !== "5s" && input.duration !== "10s") return null;
+  if (input.quality !== "580p" && input.quality !== "720p" && input.quality !== "1080p") return null;
+  return estimateWanCost(input.model, input.mode, input.duration, input.quality);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
