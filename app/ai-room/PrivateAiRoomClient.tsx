@@ -1,5 +1,5 @@
 "use client";
-import {useCallback,useEffect,useMemo,useState} from "react";
+import {useCallback,useEffect,useMemo,useRef,useState} from "react";
 import Link from "next/link";
 import {WAN_CATALOG,WAN_MODEL_NAMES,isWanModel,type WanModel,type WanDuration,type WanQuality} from "@/lib/wan-models";
 import {estimateWanCostUsd} from "@/lib/ai-room-jobs";
@@ -38,6 +38,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
   const [reference,setReference]=useState("");
   const [referenceName,setReferenceName]=useState("");
   const [openJob,setOpenJob]=useState<PrivateJob|null>(null);
+  const pollingActive=useRef(false);
 
   const loadJobs=useCallback(async()=>{
     const result=await asJson(await fetch("/api/ai-room/jobs",{cache:"no-store"}));
@@ -64,9 +65,11 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
   useEffect(()=>{
     if(!user || !jobs.some(j=>j.status==="queued" || j.status==="processing"))return;
     const timer=window.setInterval(()=>{
+      if(pollingActive.current)return;
+      pollingActive.current=true;
       const pending=jobs.filter(j=>j.status==="queued"||j.status==="processing");
       void (async()=>{
-        for(const job of pending){
+        try {for(const job of pending){
           try{
             const result=await asJson(await fetch("/api/ai-room/generate/"+encodeURIComponent(job.id),{cache:"no-store"}));
             const update=result.job as PrivateJob;
@@ -74,7 +77,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
           }catch(e){
             setError(e instanceof Error?e.message:"Status temporarily unavailable; job was not resubmitted");
           }
-        }
+        }}finally{pollingActive.current=false;}
       })();
     },7000);
     return()=>window.clearInterval(timer);
