@@ -416,7 +416,7 @@ test("Wan 2.7 text and image payloads use duration, with image_url only for imag
   assert.equal(calls[0].url,"https://queue.fal.run/fal-ai/wan/v2.7/text-to-video");
   assert.deepEqual(calls[0].payload,{prompt:"Sunrise scene",resolution:"1080p",aspect_ratio:"16:9",duration:10});
   assert.equal(calls[1].url,"https://queue.fal.run/fal-ai/wan/v2.7/image-to-video");
-  assert.deepEqual(calls[1].payload,{prompt:"Animate this",resolution:"720p",aspect_ratio:"16:9",duration:5,image_url:"data:image/png;base64,AAAA"});
+  assert.deepEqual(calls[1].payload,{prompt:"Animate this",resolution:"720p",duration:5,image_url:"data:image/png;base64,AAAA"});
 });
 
 test("Wan 3.0 and Prime text/image payloads use start_image_url and preserve model-specific queue IDs", async t => {
@@ -464,4 +464,85 @@ test("new-version queued jobs remain pollable after the page reloads", async t =
   }
   assert.equal(seen.length,6);
   assert.ok(seen.every(url=>url.includes("/requests/saved123/status?logs=0")));
+});
+
+test("appearance mode validates boolean and uses supported adaptive ratio only for Wan 3 image", () => {
+  assert.throws(() => parseVideoRequest({
+    prompt:"Subtle breathing",mode:"image",model:"Wan 3.0",
+    imageUrl:"data:image/png;base64,AAAA",preserveAppearance:"yes",
+  }), /Invalid preserve appearance/);
+  assert.throws(() => parseVideoRequest({
+    prompt:"Subtle breathing",mode:"image",model:"Wan 2.7",
+    imageUrl:"data:image/png;base64,AAAA",aspect:"adaptive",
+  }), /Adaptive aspect ratio/);
+  assert.throws(() => parseVideoRequest({
+    prompt:"Subtle breathing",mode:"text",model:"Wan 3.0",aspect:"adaptive",
+  }), /Adaptive aspect ratio/);
+  const req=parseVideoRequest({
+    prompt:"Subtle breathing",mode:"image",model:"Wan 3.0",quality:"1080p",
+    imageUrl:"data:image/png;base64,AAAA",aspect:"adaptive",preserveAppearance:true,
+  });
+  assert.equal(req.preserveAppearance,true);
+  assert.equal(req.aspect,"adaptive");
+});
+
+test("Wan 3.0 and Prime appearance mode preserve the first frame and avoid expansion", async t => {
+  useFal(t);
+  const requests: Array<{url:string;body:Record<string,unknown>}>=[];
+  globalThis.fetch=(async (input,init)=>{
+    requests.push({url:String(input),body:JSON.parse(String(init?.body))});
+    return json({request_id:"preserve-123"});
+  }) as typeof fetch;
+  for(const model of ["Wan 3.0","Wan 3.0 Prime"] as const) {
+    const result=await getVideoEngine().submit(parseVideoRequest({
+      prompt:"Subtle eye blink",model,mode:"image",aspect:"adaptive",
+      duration:"5s",quality:"1080p",preserveAppearance:true,
+      imageUrl:"data:image/png;base64,AAAA",
+    }));
+    assert.match(result.id, /:image:/);
+  }
+  assert.equal(requests.length,2);
+  for(const {body} of requests) {
+    assert.equal(body.start_image_url,"data:image/png;base64,AAAA");
+    assert.equal(body.aspect_ratio,"adaptive");
+    assert.equal(body.enable_prompt_expansion,false);
+    assert.equal(body.audio,false);
+    assert.match(String(body.prompt),/SAME person throughout/);
+    assert.match(String(body.prompt),/Subtle eye blink/);
+  }
+});
+
+test("Wan 2.7 appearance mode passes documented first-frame options without aspect_ratio", async t => {
+  useFal(t);
+  let sent:Record<string,unknown>|undefined;
+  globalThis.fetch=(async (_input,init)=>{
+    sent=JSON.parse(String(init?.body)) as Record<string,unknown>;
+    return json({request_id:"preserve-27"});
+  }) as typeof fetch;
+  await getVideoEngine().submit(parseVideoRequest({
+    prompt:"Minimal shoulder movement",model:"Wan 2.7",mode:"image",
+    duration:"5s",quality:"1080p",preserveAppearance:true,
+    imageUrl:"data:image/png;base64,AAAA",
+  }));
+  assert.equal(sent?.image_url,"data:image/png;base64,AAAA");
+  assert.equal(sent?.aspect_ratio,undefined);
+  assert.equal(sent?.enable_prompt_expansion,false);
+  assert.match(String(sent?.negative_prompt),/face morphing/);
+  assert.match(String(sent?.prompt),/Minimal shoulder movement/);
+});
+
+test("normal image-video requests without appearance mode preserve previous Wan 3 payload",async t=>{
+  useFal(t);
+  let sent:Record<string,unknown>|undefined;
+  globalThis.fetch=(async (_input,init)=>{
+    sent=JSON.parse(String(init?.body)) as Record<string,unknown>;
+    return json({request_id:"legacy3"});
+  }) as typeof fetch;
+  await getVideoEngine().submit(parseVideoRequest({
+    prompt:"A person waves",model:"Wan 3.0",mode:"image",
+    imageUrl:"data:image/png;base64,AAAA",
+  }));
+  assert.equal(sent?.prompt,"A person waves");
+  assert.equal(sent?.enable_prompt_expansion,true);
+  assert.equal(sent?.audio,true);
 });
