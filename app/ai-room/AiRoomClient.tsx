@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { createVideoJobPoller } from "@/lib/ai-room-polling";
 import { estimateWanCostUsd, formatElapsed, normalizeStoredJob, type StoredAiRoomJob } from "@/lib/ai-room-jobs";
@@ -14,7 +14,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
   const [mode,setMode]=useState<Mode>("text");
   const [view,setView]=useState<View>("generate");
   const [prompt,setPrompt]=useState("");
-  const [model,setModel]=useState("Wan 2.2 Fast");
+  const [model,setModel]=useState("Wan 2.2 Standard");
   const [duration,setDuration]=useState("5s");
   const [ratio,setRatio]=useState("16:9");
   const [quality,setQuality]=useState("720p");
@@ -83,7 +83,8 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
   const readyJob=jobs.find(j=>j.videoUrl);
   const readyVideo=readyJob?.videoUrl;
   const completedJobs=jobs.filter(j=>j.videoUrl);
-  const estimate=useMemo(()=>model.includes("Fast")?"Low":model.includes("14B")?"Medium":"Premium",[model]);
+  const estimatedCost=estimateWanCostUsd({model,mode,duration,quality});
+  const qualityHint=model==="Wan 2.2 Fast"?"Speed-first distilled model · lower detail":model==="Wan 2.2 Standard"?"Non-distilled 5B · balanced cost":model==="Wan 2.2 14B"?"Larger model · stronger visual detail":"Premium 1080p · higher cost";
   const viewTitle=view==="generate"?"Create a video":view==="gallery"?"Gallery":view==="history"?"History":"Usage & Cost";
   const viewSubtitle=view==="generate"?"Describe the scene. AI ROOM handles the generation workflow.":view==="gallery"?"Completed generations in one place.":view==="history"?"Recent generation activity and job status.":"Estimated generation spend and usage history for this browser.";
 
@@ -215,18 +216,19 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
               <label className="drop"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>onReferenceImage(e.target.files?.[0])}/>{referenceImage?<><img className="reference-preview" src={referenceImage} alt="Reference preview"/><b>{referenceName}</b><span>Click to replace · JPG, PNG or WEBP · max 2.5 MB</span></>:<><b>＋ Add reference image</b><span>JPG, PNG or WEBP · max 2.5 MB</span></>}</label>
               {imageError&&<div className="error-banner">{imageError}</div>}
             </div>}
-            <label className="field"><span>Prompt</span><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="A cinematic night scene, soft light, natural camera movement..."/></label>
+            <label className="field"><span>Prompt</span><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="Subject, setting, lighting, precise motion, camera angle and movement..."/></label>
             <div className="options">
-              <label><span>Model</span><select value={model} onChange={e=>{const next=e.target.value;setModel(next);if(next.includes("Fast"))setDuration("5s")}}><option>Wan 2.2 Fast</option><option>Wan 2.2 14B</option><option disabled>Premium (coming soon)</option></select></label>
-              <label><span>Duration</span><select value={duration} onChange={e=>setDuration(e.target.value)}><option>5s</option>{model.includes("14B")&&<option>10s</option>}</select></label>
+              <label><span>Model</span><select value={model} onChange={e=>{const next=e.target.value;setModel(next);if(next==="Wan 2.2 Fast"||next==="Wan 2.2 Standard")setDuration("5s");setQuality(next==="Wan 2.6"?"1080p":"720p")}}><option>Wan 2.2 Fast</option><option>Wan 2.2 Standard</option><option>Wan 2.2 14B</option><option>Wan 2.6</option></select></label>
+              <label><span>Duration</span><select value={duration} onChange={e=>setDuration(e.target.value)}><option>5s</option>{(model==="Wan 2.2 14B"||model==="Wan 2.6")&&<option>10s</option>}</select></label>
               <label><span>Aspect</span><select value={ratio} onChange={e=>setRatio(e.target.value)}><option>16:9</option><option>9:16</option><option>1:1</option></select></label>
-              <label><span>Quality</span><select value={quality} onChange={e=>setQuality(e.target.value)}><option>580p</option><option>720p</option></select></label>
+              <label><span>Resolution</span><select value={quality} onChange={e=>setQuality(e.target.value)}>{model!=="Wan 2.6"&&<option>580p</option>}<option>720p</option>{model==="Wan 2.6"&&<option>1080p</option>}</select></label>
             </div>
+            <div className="info-banner">{qualityHint}. Higher resolution does not guarantee realistic faces or motion. Describe one coherent scene and camera move for a 5s clip.</div>
             {!providerState.realGeneration&&providerState.checked&&<div className="info-banner">Preview mode — connect the fal.ai provider to enable real video generation.</div>}
             {error&&<div className="error-banner">{error}</div>}
-            <div className="generate-row"><div><small>Estimated compute</small><strong>{estimate} · {duration} · {quality}</strong></div><button className="generate" disabled={!canGenerate||submitting} onClick={generate}>{submitting?"Submitting…":"Generate video ✦"}</button></div>
+            <div className="generate-row"><div><small>Estimated provider cost (USD)</small><strong>{estimatedCost===null?"Price unavailable":`${estimatedCost.toFixed(2)}`} · {duration} · {quality}</strong></div><button className="generate" disabled={!canGenerate||submitting} onClick={generate}>{submitting?"Submitting…":"Generate video ✦"}</button></div>
           </section>
-          <aside className="preview card">{readyVideo?<><video className="result-video" src={readyVideo} controls playsInline/>{readyJob&&resultActions(readyJob)}</>:<div className="preview-box"><div className="play">▶</div><strong>Your video appears here</strong><span>Generate a clip to preview it.</span></div>}<div className="preview-meta"><span>{model}</span><span>{ratio}</span><span>{duration}</span><span>{quality}</span></div></aside>
+          <aside className="preview card">{readyVideo?<><video className="result-video" src={readyVideo} controls playsInline/>{readyJob&&resultActions(readyJob)}</>:<div className="preview-box"><div className="play">▶</div><strong>Your video appears here</strong><span>Generate a clip to preview it.</span></div>}<div className="preview-meta"><span>{readyJob?.model??model}</span><span>{readyJob?.aspect??ratio}</span><span>{readyJob?.duration??duration}</span><span>{readyJob?.quality??quality}</span></div></aside>
         </div>
         <section className="queue card"><div className="section-head"><div><span className="kicker">QUEUE</span><h2>Recent generations</h2></div><span>{jobs.length} jobs</span></div>
           {jobs.length===0?<div className="empty">No generations yet. Your first job will appear here.</div>:jobs.slice(0,8).map(j=><div className="job" key={j.id}><div className="thumb">✦</div><div><strong>{j.prompt}</strong><span>{j.model} · {displayTime(j)}{j.estimatedCostUsd!==undefined?` · est. ${j.estimatedCostUsd.toFixed(2)}`:""}</span>{j.error&&<div className="error-banner" role="status">{j.error}</div>}{resultActions(j)}</div><b>{statusLabel(j)}</b></div>)}
