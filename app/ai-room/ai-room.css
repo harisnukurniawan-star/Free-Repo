@@ -103,3 +103,10 @@
 .ai-room-route .ai-access-key input:focus{outline:2px solid #334155;outline-offset:1px}
 .ai-room-route .ai-access-key small{display:block;margin-top:6px;font-size:10px;color:#6b7280}
 @media(max-width:520px){.ai-room-route .generate-row{align-items:stretch;flex-direction:column;gap:12px}.ai-room-route .generate{width:100%}}
+
+.ai-room-route .appearance-option{display:flex;align-items:flex-start;gap:9px;margin:11px 0 14px;padding:11px 12px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;cursor:pointer}
+.ai-room-route .appearance-option input{margin-top:2px;width:16px;height:16px;flex-shrink:0;accent-color:#334155}
+.ai-room-route .appearance-option span{display:block}
+.ai-room-route .appearance-option strong{display:block;color:#111827;font-size:11px}
+.ai-room-route .appearance-option small{display:block;color:#64748b;font-size:10px;line-height:1.45;margin-top:4px}
+.ai-room-route .source-aspect{display:flex;align-items:center;min-height:38px;padding:0 9px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:9px;color:#475569;font-size:11px}
