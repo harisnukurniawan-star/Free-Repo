@@ -103,3 +103,9 @@
 .ai-room-route .ai-access-key input:focus{outline:2px solid #334155;outline-offset:1px}
 .ai-room-route .ai-access-key small{display:block;margin-top:6px;font-size:10px;color:#6b7280}
 @media(max-width:520px){.ai-room-route .generate-row{align-items:stretch;flex-direction:column;gap:12px}.ai-room-route .generate{width:100%}}
+
+.ai-room-route .face-consistency-option{display:flex;align-items:flex-start;gap:10px;border:1px solid #dbeafe;background:#f8fbff;border-radius:11px;padding:12px 13px;margin-bottom:14px;cursor:pointer}
+.ai-room-route .face-consistency-option input{width:17px;height:17px;flex:none;margin:2px 0 0;accent-color:#1d4ed8}
+.ai-room-route .face-consistency-option span{min-width:0;display:block}
+.ai-room-route .face-consistency-option strong{display:block;font-size:11px;color:#172554;margin-bottom:4px}
+.ai-room-route .face-consistency-option small{display:block;font-size:10px;line-height:1.5;color:#475569}
