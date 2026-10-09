@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { createVideoJobPoller } from "@/lib/ai-room-polling";
+import { WAN_CATALOG, WAN_MODEL_NAMES, estimateWanCost, type WanModel, type WanDuration, type WanQuality } from "@/lib/wan-models";
 
 type Mode="text"|"image";
 type View="generate"|"gallery"|"history";
@@ -13,10 +14,10 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
   const [mode,setMode]=useState<Mode>("text");
   const [view,setView]=useState<View>("generate");
   const [prompt,setPrompt]=useState("");
-  const [model,setModel]=useState("Wan 2.2 Fast");
-  const [duration,setDuration]=useState("5s");
+  const [model,setModel]=useState<WanModel>("Wan 2.2 Fast");
+  const [duration,setDuration]=useState<WanDuration>("5s");
   const [ratio,setRatio]=useState("16:9");
-  const [quality,setQuality]=useState("720p");
+  const [quality,setQuality]=useState<WanQuality>("720p");
   const [jobs,setJobs]=useState<Job[]>([]);
   const [submitting,setSubmitting]=useState(false);
   const submissionInFlight=useRef(false);
@@ -67,10 +68,18 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
     poller.current?.setPendingJobs(jobs.filter(j=>j.status==="Queued"||j.status==="Processing").map(j=>j.id));
   },[jobs,hydrated,providerState.realGeneration]);
 
-  const canGenerate=providerState.realGeneration&&!model.startsWith("Premium")&&prompt.trim().length>=3&&(mode==="text"||!!referenceImage);
+  const modelConfig=WAN_CATALOG[model];
+  const cost=useMemo(()=>estimateWanCost(model,mode,duration,quality),[model,mode,duration,quality]);
+  const canGenerate=providerState.realGeneration&&cost!==null&&prompt.trim().length>=3&&(mode==="text"||!!referenceImage);
   const readyVideo=jobs.find(j=>j.videoUrl)?.videoUrl;
   const completedJobs=jobs.filter(j=>j.videoUrl);
-  const estimate=useMemo(()=>model.includes("Fast")?"Low":model.includes("14B")?"Medium":"Premium",[model]);
+  function selectModel(value: string){
+    if(!WAN_MODEL_NAMES.some(name=>name===value))return;
+    const next=value as WanModel;
+    setModel(next);
+    if(!(WAN_CATALOG[next].durations as readonly string[]).includes(duration))setDuration("5s");
+    if(!(WAN_CATALOG[next].qualities as readonly string[]).includes(quality))setQuality("720p");
+  }
 
   function onReferenceImage(file?:File){
     setImageError("");
@@ -134,14 +143,14 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
             </div>}
             <label className="field"><span>Prompt</span><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="A cinematic night scene, soft light, natural camera movement..."/></label>
             <div className="options">
-              <label><span>Model</span><select value={model} onChange={e=>{const next=e.target.value;setModel(next);if(next.includes("Fast"))setDuration("5s")}}><option>Wan 2.2 Fast</option><option>Wan 2.2 14B</option><option disabled>Premium (coming soon)</option></select></label>
-              <label><span>Duration</span><select value={duration} onChange={e=>setDuration(e.target.value)}><option>5s</option>{model.includes("14B")&&<option>10s</option>}</select></label>
+              <label><span>Model</span><select value={model} onChange={e=>selectModel(e.target.value)}>{WAN_MODEL_NAMES.map(name=><option key={name} value={name}>{name}{name==="Wan 3.0"?" · Recommended":""}</option>)}</select></label>
+              <label><span>Duration</span><select value={duration} onChange={e=>setDuration(e.target.value as WanDuration)}>{modelConfig.durations.map(value=><option key={value}>{value}</option>)}</select></label>
               <label><span>Aspect</span><select value={ratio} onChange={e=>setRatio(e.target.value)}><option>16:9</option><option>9:16</option><option>1:1</option></select></label>
-              <label><span>Quality</span><select value={quality} onChange={e=>setQuality(e.target.value)}><option>580p</option><option>720p</option></select></label>
+              <label><span>Quality</span><select value={quality} onChange={e=>setQuality(e.target.value as WanQuality)}>{modelConfig.qualities.map(value=><option key={value}>{value}</option>)}</select></label>
             </div>
             {!providerState.realGeneration&&providerState.checked&&<div className="info-banner">Preview mode — connect the fal.ai provider to enable real video generation.</div>}
             {error&&<div className="error-banner">{error}</div>}
-            <div className="generate-row"><div><small>Estimated compute</small><strong>{estimate} · {duration} · {quality}</strong></div><button className="generate" disabled={!canGenerate||submitting} onClick={generate}>{submitting?"Submitting…":"Generate video ✦"}</button></div>
+            <div className="generate-row"><div><small>Estimated fal.ai charge · {duration} · {quality}</small><strong>{cost===null?"Unavailable":`~${cost.toFixed(2)} USD`}</strong><small>Estimate only · charged from your existing fal.ai credit when submitted; not a live balance.</small></div><button className="generate" disabled={!canGenerate||submitting} onClick={generate}>{submitting?"Submitting…":"Generate video ✦"}</button></div>
           </section>
           <aside className="preview card">{readyVideo?<video className="result-video" src={readyVideo} controls playsInline/>:<div className="preview-box"><div className="play">▶</div><strong>Your video appears here</strong><span>Generate a clip to preview it.</span></div>}<div className="preview-meta"><span>{model}</span><span>{ratio}</span><span>{duration}</span><span>{quality}</span></div></aside>
         </div>
