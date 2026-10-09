@@ -13,6 +13,7 @@ export type VideoRequest = {
   quality: WanQuality;
   imageUrl?: string;
   preserveFace?: boolean;
+  actionOnly?: boolean;
 };
 export type VideoJob = {
   id: string;
@@ -93,7 +94,13 @@ export function parseVideoRequest(value: unknown): VideoRequest {
     throw new VideoEngineError("Invalid preserve face setting.", 400, false);
   }
   const preserveFace = mode === "image" && body.preserveFace === true;
-  return { prompt: body.prompt.trim(), mode, model, duration, aspect, quality, imageUrl, preserveFace };
+  if (body.actionOnly !== undefined && typeof body.actionOnly !== "boolean") {
+    throw new VideoEngineError("Invalid action-only setting.", 400, false);
+  }
+  // The prompt is a scene direction, never spoken dialogue by default.
+  // This is intentionally server enforced, including callers bypassing the UI.
+  const actionOnly = body.actionOnly !== false;
+  return { prompt: body.prompt.trim(), mode, model, duration, aspect, quality, imageUrl, preserveFace, actionOnly };
 }
 
 function parseJobId(id: string) {
@@ -193,15 +200,21 @@ class FalWanEngine implements VideoEngine {
     // Only guide identity for reference-image mode; this is a best-effort prompt,
     // not a face-recognition or biometric guarantee.
     const keepFace = input.mode === "image" && input.preserveFace === true;
-    const scenePrompt = keepFace
-      ? `${input.prompt.trim()}\nPreserve the exact appearance of the person in the provided first-frame image: same facial structure, eyes, nose, mouth, skin tone, hair and proportions across all frames. Animate only natural subtle movement; do not change identity, age, or facial features. Keep one continuous shot.`
-      : input.prompt;
+    const actionOnly = input.actionOnly !== false;
+    // Keep the user's prompt as *direction*. Without this explicit distinction,
+    // audio-capable Wan variants can turn the direction itself into speech.
+    const actionGuide = "Perform the physical action described in the prompt as a silent visual scene. The prompt is a direction to the animator, NOT dialogue for the character to recite. No speaking, singing, narration, voiceover, or lip sync. Do not mouth the prompt words. Keep natural facial expressions and body movement; no subtitles, captions, or on-screen text.";
+    const faceGuide = "Preserve the exact appearance of the person in the provided first-frame image: same facial structure, eyes, nose, mouth, skin tone, hair and proportions across all frames. Animate only natural subtle movement; do not change identity, age, or facial features. Keep one continuous shot.";
+    const scenePrompt = [input.prompt.trim(), keepFace ? faceGuide : "", actionOnly ? actionGuide : ""].filter(Boolean).join("\n");
+
     const common = {
       prompt: scenePrompt,
       resolution: input.quality,
       aspect_ratio: input.aspect,
     };
     const faceAvoid = "altered identity, different face, face morphing, changed facial features, warped eyes, unnatural face, extra facial features";
+    const speechAvoid = "speaking, talking, speech mouth movements, lip sync, reciting prompt text, narration, voiceover, singing, subtitles, captions, on-screen text";
+    const negativePrompt = [keepFace ? faceAvoid : "", actionOnly ? speechAvoid : ""].filter(Boolean).join(", ");
     let payload: Record<string, string | number | boolean>;
     if (tier === "fast" || tier === "a14b") {
       // Wan 2.2 uses frame counts, not a duration field.
@@ -210,17 +223,17 @@ class FalWanEngine implements VideoEngine {
         frames_per_second: tier === "fast" ? 24 : 16,
         num_frames: input.duration === "10s" ? 161 : tier === "fast" ? 121 : 81,
         ...(input.mode === "image" ? { image_url: input.imageUrl! } : {}),
-        ...(keepFace ? { enable_prompt_expansion: false, negative_prompt: faceAvoid } : {}),
+        ...(keepFace || actionOnly ? { enable_prompt_expansion: false, negative_prompt: negativePrompt } : {}),
       };
     } else if (tier === "v27") {
       // Wan 2.7 takes an integer duration and the first frame as image_url.
       payload = { ...common, duration: Number.parseInt(input.duration, 10),
         ...(input.mode === "image" ? { image_url: input.imageUrl! } : {}),
-        ...(keepFace ? { enable_prompt_expansion: false, negative_prompt: faceAvoid } : {}) };
+        ...(keepFace || actionOnly ? { enable_prompt_expansion: false, negative_prompt: negativePrompt } : {}) };
     } else {
       // Wan 3.0/Prime take an integer duration and start_image_url.
       payload = { ...common, duration: Number.parseInt(input.duration, 10),
-        audio: true, enable_prompt_expansion: !keepFace,
+        audio: !actionOnly, enable_prompt_expansion: !keepFace && !actionOnly,
         ...(input.mode === "image" ? { start_image_url: input.imageUrl! } : {}) };
     }
     try {
