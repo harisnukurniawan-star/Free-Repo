@@ -1,4 +1,5 @@
 import AiRoomClient from "./AiRoomClient";
+import { generationAccessState } from "@/lib/ai-room-access";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,7 @@ export default function AiRoomPage(){
   return <AiRoomClient initialProviderState={{
     checked:true,
     provider,
-    realGeneration
+    realGeneration,
+    ...generationAccessState()
   }} />;
 }
