@@ -141,11 +141,11 @@ export async function privateSubmit(owner:string,body:unknown):Promise<ClientJob
   await putRecord(record);
   return publicRecord(record);
 }
-function assertFalMediaUrl(raw:string):URL{
+export function assertFalMediaUrl(raw:string):URL{
   let u:URL;
   try{u=new URL(raw);}catch{throw new VideoEngineError("Provider video URL is invalid.",502,false);}
   if(u.protocol!=="https:" || u.username || u.password || u.port ||
-    !(/(^|\\.)fal\\.media$/).test(u.hostname) || u.hostname==="fal.media" && u.pathname==="/"){
+    !/(^|\.)fal\.media$/.test(u.hostname) || (u.hostname==="fal.media" && u.pathname==="/")){
     throw new VideoEngineError("Untrusted provider media host.",502,false);
   }
   return u;
@@ -210,7 +210,7 @@ export async function privateList(owner:string):Promise<ClientJob[]>{
     throw new VideoEngineError("Unable to list private videos.",503,true);
   }finally{c.destroy();}
   const jobs=await Promise.all(objects.map(async row=>{
-    const id=row.Key?.slice(("jobs/"+owner+"/").length).replace(/\\.json$/,"");
+    const id=row.Key?.slice(("jobs/"+owner+"/").length).replace(/\.json$/,"");
     if(!id || !JOB_ID.test(id))return null;
     try{
       const record=await getRecord(owner,id);
