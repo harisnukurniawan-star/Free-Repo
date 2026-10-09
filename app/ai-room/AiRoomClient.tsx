@@ -29,6 +29,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
   const [hydrated,setHydrated]=useState(false);
   const [historyWritable,setHistoryWritable]=useState(true);
   const [referenceImage,setReferenceImage]=useState("");
+  const [preserveAppearance,setPreserveAppearance]=useState(true);
   const [referenceName,setReferenceName]=useState("");
   const [imageError,setImageError]=useState("");
   const [providerState,setProviderState]=useState<ProviderState>(initialProviderState);
@@ -96,8 +97,15 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
   const readyJob=jobs.find(j=>j.videoUrl);
   const readyVideo=readyJob?.videoUrl;
   const completedJobs=jobs.filter(j=>j.videoUrl);
+  function selectMode(next:Mode){
+    setMode(next);
+    if(next==="image"&&(model==="Wan 3.0"||model==="Wan 3.0 Prime"))setRatio("adaptive");
+    if(next==="text"&&ratio==="adaptive")setRatio("16:9");
+  }
   function selectModel(next:WanModel){
     setModel(next);
+    if(mode==="image"&&(next==="Wan 3.0"||next==="Wan 3.0 Prime"))setRatio("adaptive");
+    else if(ratio==="adaptive")setRatio("16:9");
     if(!(WAN_CATALOG[next].durations as readonly string[]).includes(duration))setDuration("5s");
     if(!(WAN_CATALOG[next].qualities as readonly string[]).includes(quality))setQuality("720p");
   }
@@ -152,6 +160,9 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
     setMode(nextMode);
     setDuration(job.duration==="10s"&&(WAN_CATALOG[nextModel].durations as readonly string[]).includes("10s")?"10s":"5s");
     if(job.aspect)setRatio(job.aspect);
+    else if(nextMode==="image"&&(nextModel==="Wan 3.0"||nextModel==="Wan 3.0 Prime"))setRatio("adaptive");
+    else setRatio("16:9");
+    setPreserveAppearance(job.preserveAppearance ?? true);
     setQuality((job.quality==="580p"||job.quality==="1080p")&&(WAN_CATALOG[nextModel].qualities as readonly string[]).includes(job.quality)?job.quality:"720p");
     if(nextMode==="image"){
       setReferenceImage("");
@@ -183,7 +194,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
     const submittedPrompt=prompt.trim();
     setSubmitting(true);setError("");
     try{
-      const response=await fetch("/api/ai-room/generate",{method:"POST",headers:{"Content-Type":"application/json","x-ai-room-access-key":accessKey},body:JSON.stringify({prompt:submittedPrompt,mode,model,duration,aspect:ratio,quality,imageUrl:mode==="image"?referenceImage:undefined})});
+      const response=await fetch("/api/ai-room/generate",{method:"POST",headers:{"Content-Type":"application/json","x-ai-room-access-key":accessKey},body:JSON.stringify({prompt:submittedPrompt,mode,model,duration,aspect:ratio,quality,imageUrl:mode==="image"?referenceImage:undefined,preserveAppearance:mode==="image"?preserveAppearance:undefined})});
       const data=await response.json().catch(()=>{throw new Error("Could not read the submission response. Check your existing jobs before trying again.")});
       if(!response.ok||!data.job)throw new Error(data.error||"Generation request failed");
       setJobs(current=>[{
@@ -197,6 +208,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
         aspect:ratio,
         quality,
         estimatedCostUsd:estimateWanCostUsd({model,mode,duration,quality})??undefined,
+        preserveAppearance:mode==="image"?preserveAppearance:undefined,
       },...current]);
       setPrompt("");
     }catch(e){setError(e instanceof Error?e.message:"Generation request failed")}
@@ -231,18 +243,25 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
       {view==="generate"&&<>
         <div className="studio-grid">
           <section className="composer card">
-            <div className="tabs"><button onClick={()=>setMode("text")} className={mode==="text"?"active":""}>Text → Video</button><button onClick={()=>setMode("image")} className={mode==="image"?"active":""}>Image → Video</button></div>
+            <div className="tabs"><button onClick={()=>selectMode("text")} className={mode==="text"?"active":""}>Text → Video</button><button onClick={()=>selectMode("image")} className={mode==="image"?"active":""}>Image → Video</button></div>
             {mode==="image"&&<div>
               <label className="drop"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{onReferenceImage(e.target.files?.[0]);e.currentTarget.value=""}}/>{referenceImage?<><img className="reference-preview" src={referenceImage} alt="Reference preview"/><b>{referenceName}</b><span>Click to replace · JPG, PNG or WEBP · max 2.5 MB</span></>:<><b>＋ Add reference image</b><span>JPG, PNG or WEBP · max 2.5 MB</span></>}</label>
               {imageError&&<div className="error-banner">{imageError}</div>}
+              <label className="appearance-option"><input type="checkbox" checked={preserveAppearance} onChange={e=>setPreserveAppearance(e.target.checked)}/><span><strong>Preserve original appearance</strong><small>Prioritize the same face and details; limit facial changes and prompt rewriting. Not a guarantee of identical identity.</small></span></label>
             </div>}
             <label className="field"><span>Prompt</span><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="A cinematic night scene, soft light, natural camera movement..."/></label>
             <div className="options">
               <label><span>Model</span><select value={model} onChange={e=>{if(isWanModel(e.target.value))selectModel(e.target.value)}}>{WAN_MODEL_NAMES.map(name=><option key={name} value={name}>{name}{name==="Wan 3.0"?" · Recommended":""}</option>)}</select></label>
               <label><span>Duration</span><select value={duration} onChange={e=>setDuration(e.target.value as WanDuration)}>{modelConfig.durations.map(value=><option key={value}>{value}</option>)}</select></label>
-              <label><span>Aspect</span><select value={ratio} onChange={e=>setRatio(e.target.value)}><option>16:9</option><option>9:16</option><option>1:1</option></select></label>
+              <label><span>Aspect</span>{mode==="image"&&model==="Wan 2.7"
+                ? <div className="source-aspect">From photo</div>
+                : <select value={ratio} onChange={e=>setRatio(e.target.value)}>
+                  {mode==="image"&&(model==="Wan 3.0"||model==="Wan 3.0 Prime")&&<option value="adaptive">Match photo</option>}
+                  <option>16:9</option><option>9:16</option><option>1:1</option>
+                </select>}</label>
               <label><span>Quality</span><select value={quality} onChange={e=>setQuality(e.target.value as WanQuality)}>{modelConfig.qualities.map(value=><option key={value}>{value}</option>)}</select></label>
             </div>
+            {mode==="image"&&<div className="info-banner">Face changes can still happen with AI video models. For best similarity, start with a clear reference face and request subtle motion instead of drastic camera turns. Wan 3.0 can match the source image aspect automatically.</div>}
             {!providerState.realGeneration&&providerState.checked&&<div className="info-banner">Preview mode — connect the fal.ai provider to enable real video generation.</div>}
             {providerState.generationLocked&&<div className="info-banner" role="status">Paid generation is locked until the server administrator configures AI_ROOM_GENERATE_ACCESS_KEY (minimum 16 characters). No fal.ai credit can be charged while locked.</div>}
             {providerState.generationAuthRequired&&!providerState.generationLocked&&<label className="field ai-access-key"><span>Generation access key</span><input type="password" value={accessKey} autoComplete="off" placeholder="Enter your AI ROOM access key" onChange={e=>{const key=e.target.value;setAccessKey(key);try{sessionStorage.setItem("ai-room-generation-key",key)}catch{}}}/><small>Kept only in this browser tab session. Required to authorize paid generation.</small></label>}

@@ -17,6 +17,7 @@ export type StoredAiRoomJob = {
   estimatedCostUsd?: number;
   videoUrl?: string;
   error?: string;
+  preserveAppearance?: boolean;
 };
 
 export type CostInput = {
@@ -72,6 +73,7 @@ export function normalizeStoredJob(value: unknown): StoredAiRoomJob | null {
     quality,
     estimatedCostUsd,
     videoUrl: typeof value.videoUrl === "string" ? value.videoUrl : undefined,
+    preserveAppearance: typeof value.preserveAppearance === "boolean" ? value.preserveAppearance : undefined,
     error: typeof value.error === "string" ? value.error : undefined,
   };
 }
