@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
+import { assertGenerationAccess } from "@/lib/ai-room-access";
 import { getVideoEngine, parseVideoRequest, VideoEngineError, videoEngineError } from "@/lib/video-engine";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
+    assertGenerationAccess(request);
     let body: unknown;
     try {
       body = await request.json();
