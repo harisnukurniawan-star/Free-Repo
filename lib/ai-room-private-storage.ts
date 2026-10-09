@@ -45,6 +45,29 @@ function videoKey(owner:string,id:string):string {
   if(!JOB_ID.test(id))throw new VideoEngineError("Invalid private video job ID.",400,false);
   return "videos/"+owner+"/"+id+".mp4";
 }
+function deletionKey(owner:string,id:string):string{
+  key(owner,id);
+  return "deleted/"+owner+"/"+id+".json";
+}
+async function wasDeleted(owner:string,id:string):Promise<boolean>{
+  const c=client(),{bucket}=settings();
+  try{
+    await c.send(new HeadObjectCommand({Bucket:bucket,Key:deletionKey(owner,id)}));
+    return true;
+  }catch(e){
+    if(["NotFound","NoSuchKey"].includes((e as {name?:string})?.name||""))return false;
+    throw new VideoEngineError("Cannot verify private video deletion state.",503,true);
+  }finally{c.destroy();}
+}
+async function requireNotDeleted(owner:string,id:string):Promise<void>{
+  if(await wasDeleted(owner,id))throw new VideoEngineError("Private video was deleted.",404,false);
+}
+async function removeVideo(owner:string,id:string):Promise<void>{
+  const c=client(),{bucket}=settings();
+  try{await c.send(new DeleteObjectCommand({Bucket:bucket,Key:videoKey(owner,id)}));}
+  catch{throw new VideoEngineError("Could not remove private video bytes. Retry Delete.",503,true);}
+  finally{c.destroy();}
+}
 async function readBody(stream:unknown):Promise<string>{
   if(!stream || typeof stream!=="object" || !("transformToString" in stream) || typeof stream.transformToString!=="function"){
     throw new VideoEngineError("Invalid OCI video metadata.",502,true);
@@ -87,6 +110,7 @@ function publicRecord(job:PrivateRecord):ClientJob {
 }
 async function signedRecord(job:PrivateRecord):Promise<ClientJob>{
   const safe=publicRecord(job);
+  await requireNotDeleted(job.owner,job.id);
   if(job.status!=="completed")return safe;
   const c=client(),{bucket}=settings();
   try{
@@ -172,16 +196,22 @@ async function importVideo(owner:string,id:string,source:string):Promise<void>{
       await response.body.cancel();
       throw new VideoEngineError("Provider returned a non-video file.",502,false);
     }
+    await requireNotDeleted(owner,id);
     await new Upload({client:c,params:{Bucket:bucket,Key:dst,
       Body:Readable.fromWeb(response.body as import("node:stream/web").ReadableStream),
       ContentType:"video/mp4",ContentLength:size,CacheControl:"private, no-store"},
       queueSize:2,partSize:8*1024*1024,leavePartsOnError:false}).done();
+    if(await wasDeleted(owner,id)){
+      await removeVideo(owner,id);
+      throw new VideoEngineError("Private video was deleted.",404,false);
+    }
   }catch(error){
     if(error instanceof VideoEngineError)throw error;
     throw new VideoEngineError("Video transfer to private OCI storage failed. Retry status later.",503,true);
   }finally{c.destroy();}
 }
 export async function privateStatus(owner:string,id:string):Promise<ClientJob>{
+  await requireNotDeleted(owner,id);
   let record=await getRecord(owner,id);
   if(record.status==="deleted")throw new VideoEngineError("Private video was deleted.",404,false);
   if(record.status==="completed" || record.status==="failed")return signedRecord(record);
@@ -196,6 +226,10 @@ export async function privateStatus(owner:string,id:string):Promise<ClientJob>{
     record={...record,status:"completed",videoWidth:state.videoWidth,videoHeight:state.videoHeight};
     await putRecord(record);
   }else throw new VideoEngineError("Provider video result is incomplete.",502,true);
+  if(await wasDeleted(owner,id)){
+    if(record.status==="completed")await removeVideo(owner,id);
+    throw new VideoEngineError("Private video was deleted.",404,false);
+  }
   return signedRecord(record);
 }
 export async function privateList(owner:string):Promise<ClientJob[]>{
@@ -214,22 +248,24 @@ export async function privateList(owner:string):Promise<ClientJob[]>{
     if(!id || !JOB_ID.test(id))return null;
     try{
       const record=await getRecord(owner,id);
-      return record.status==="deleted"?null:await signedRecord(record);
+      return record.status==="deleted" || await wasDeleted(owner,id)?null:await signedRecord(record);
     }catch{return null;}
   }));
   return jobs.filter((job):job is ClientJob=>job!==null);
 }
 export async function privateDelete(owner:string,id:string):Promise<void>{
   const record=await getRecord(owner,id);
-  // Tombstone first so concurrent status polling cannot expose the video again.
+  // Independent immutable marker prevents a racing status request resurrecting access.
+  const c=client(),{bucket}=settings();
+  try{
+    await c.send(new PutObjectCommand({Bucket:bucket,Key:deletionKey(owner,id),
+      ContentType:"application/json",Body:JSON.stringify({id,deletedAt:new Date().toISOString()})}));
+  }catch{
+    throw new VideoEngineError("Could not record permanent deletion in OCI.",503,true);
+  }finally{c.destroy();}
   if(record.status!=="deleted"){
     await putRecord({id,owner,prompt:"",model:"",mode:"",aspect:"",quality:"",duration:"",
       createdAt:record.createdAt,status:"deleted"});
   }
-  const c=client(),{bucket}=settings();
-  try{
-    await c.send(new DeleteObjectCommand({Bucket:bucket,Key:videoKey(owner,id)}));
-  }catch{
-    throw new VideoEngineError("Could not remove video bytes. Retry Delete; metadata tombstone is retained.",503,true);
-  }finally{c.destroy();}
+  await removeVideo(owner,id);
 }
