@@ -204,7 +204,7 @@ class FalWanEngine implements VideoEngine {
     // Keep the user's prompt as *direction*. Without this explicit distinction,
     // audio-capable Wan variants can turn the direction itself into speech.
     const actionGuide = "Perform the physical action described in the prompt as a silent visual scene. The prompt is a direction to the animator, NOT dialogue for the character to recite. No speaking, singing, narration, voiceover, or lip sync. Do not mouth the prompt words. Keep natural facial expressions and body movement; no subtitles, captions, or on-screen text.";
-    const faceGuide = "Preserve the exact appearance of the person in the provided first-frame image: same facial structure, eyes, nose, mouth, skin tone, hair and proportions across all frames. Animate only natural subtle movement; do not change identity, age, or facial features. Keep one continuous shot.";
+    const faceGuide = "Preserve the exact appearance of the person in the provided first-frame image: same facial structure, eyes, nose, mouth, skin tone, hair and proportions across all frames. Follow the requested physical action with natural, believable body movements while keeping the face consistent; do not change identity, age, or facial features. Keep one continuous shot.";
     const scenePrompt = [input.prompt.trim(), keepFace ? faceGuide : "", actionOnly ? actionGuide : ""].filter(Boolean).join("\n");
 
     const common = {
