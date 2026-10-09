@@ -463,5 +463,5 @@ test("new Wan 2.6 queue status still works without changing old job URLs", async
   }) as typeof fetch;
   const job=await getVideoEngine().status("v26:text:v26id");
   assert.equal(job.status,"queued");
-  assert.match(requested,/^https:\/\/queue\.fal\.run\/wan\/requests\/v26id\/status\?logs=0$/);
+  assert.equal(requested,"https://queue.fal.run/wan/v2.6/requests/v26id/status?logs=0");
 });
