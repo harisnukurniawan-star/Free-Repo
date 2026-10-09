@@ -9,9 +9,10 @@ export type VideoRequest = {
   mode: "text" | "image";
   model: WanModel;
   duration: WanDuration;
-  aspect: "16:9" | "9:16" | "1:1";
+  aspect: "16:9" | "9:16" | "1:1" | "adaptive";
   quality: WanQuality;
   imageUrl?: string;
+  preserveAppearance: boolean;
 };
 export type VideoJob = {
   id: string;
@@ -65,7 +66,14 @@ export function parseVideoRequest(value: unknown): VideoRequest {
   const model = body.model === undefined ? WAN_MODEL_NAMES[0] : body.model;
   if (!isWanModel(model)) throw new VideoEngineError("Unsupported model.", 400, false);
   const duration = option(body.duration, ["5s", "10s"], "5s", "duration");
-  const aspect = option(body.aspect, ["16:9", "9:16", "1:1"], "16:9", "aspect ratio");
+  const aspect = option(body.aspect, ["16:9", "9:16", "1:1", "adaptive"], "16:9", "aspect ratio");
+  if (aspect === "adaptive" && !(mode === "image" && (model === "Wan 3.0" || model === "Wan 3.0 Prime"))) {
+    throw new VideoEngineError("Adaptive aspect ratio is supported for Wan 3.0 image-to-video only.", 400, false);
+  }
+  if (body.preserveAppearance !== undefined && typeof body.preserveAppearance !== "boolean") {
+    throw new VideoEngineError("Invalid preserve appearance setting.", 400, false);
+  }
+  const preserveAppearance = mode === "image" && body.preserveAppearance === true;
   const quality = option(body.quality, ["580p", "720p", "1080p"], "720p", "resolution");
   if (!(WAN_CATALOG[model].durations as readonly string[]).includes(duration)) {
     throw new VideoEngineError("Unsupported duration for this model.", 400, false);
@@ -86,7 +94,7 @@ export function parseVideoRequest(value: unknown): VideoRequest {
     }
     imageUrl = body.imageUrl;
   }
-  return { prompt: body.prompt.trim(), mode, model, duration, aspect, quality, imageUrl };
+  return { prompt: body.prompt.trim(), mode, model, duration, aspect, quality, imageUrl, preserveAppearance };
 }
 
 function parseJobId(id: string) {
@@ -184,7 +192,11 @@ class FalWanEngine implements VideoEngine {
     const tier = WAN_CATALOG[input.model].tier;
     const endpoint = wanEndpointFor(input.model, input.mode);
     const common = {
-      prompt: input.prompt,
+      // Motion-focused prompting helps avoid facial identity drift, but it is
+      // not a guarantee of biometric identity preservation.
+      prompt: input.mode === "image" && input.preserveAppearance
+        ? `${input.prompt}\nReference fidelity is the highest priority. The provided image is the first frame and depicts the SAME person throughout. Preserve the person's original facial structure, eye shape, nose, mouth, skin texture, hairstyle, age appearance, clothing and lighting. Animate only the requested motion. Do not morph, replace or beautify the face. Keep head movement minimal and avoid dramatic angle changes.`
+        : input.prompt,
       resolution: input.quality,
       aspect_ratio: input.aspect,
     };
@@ -199,12 +211,23 @@ class FalWanEngine implements VideoEngine {
       };
     } else if (tier === "v27") {
       // Wan 2.7 takes an integer duration and the first frame as image_url.
-      payload = { ...common, duration: Number.parseInt(input.duration, 10),
-        ...(input.mode === "image" ? { image_url: input.imageUrl! } : {}) };
+      // This endpoint infers image-to-video aspect from its source image. Its
+      // I2V schema does not accept aspect_ratio.
+      const v27Common = input.mode === "image"
+        ? { prompt: common.prompt, resolution: common.resolution }
+        : common;
+      payload = { ...v27Common, duration: Number.parseInt(input.duration, 10),
+        ...(input.mode === "image" ? { image_url: input.imageUrl! } : {}),
+        ...(input.mode === "image" && input.preserveAppearance
+          ? { negative_prompt: "different person, altered face, changed facial proportions, face morphing, beauty filter, distorted eyes or mouth", enable_prompt_expansion: false }
+          : {}) };
     } else {
       // Wan 3.0/Prime take an integer duration and start_image_url.
       payload = { ...common, duration: Number.parseInt(input.duration, 10),
-        audio: true, enable_prompt_expansion: true,
+        // Avoid rewriting the input prompt or generating audio-driven lip
+        // movements when appearance preservation is explicitly requested.
+        audio: !(input.mode === "image" && input.preserveAppearance),
+        enable_prompt_expansion: !(input.mode === "image" && input.preserveAppearance),
         ...(input.mode === "image" ? { start_image_url: input.imageUrl! } : {}) };
     }
     try {
