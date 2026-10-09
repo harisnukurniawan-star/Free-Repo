@@ -1,5 +1,6 @@
 import AiRoomClient from "./AiRoomClient";
 import { generationAccessState } from "@/lib/ai-room-access";
+import { matureContentModeEnabled } from "@/lib/ai-room-content-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,7 @@ export default function AiRoomPage(){
     checked:true,
     provider,
     realGeneration,
-    ...generationAccessState()
+    ...generationAccessState(),
+    matureModeAvailable:matureContentModeEnabled()
   }} />;
 }
