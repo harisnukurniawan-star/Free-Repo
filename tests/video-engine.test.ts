@@ -600,6 +600,7 @@ test("all five Wan variants treat directions as actions without speaking by defa
     assert.match(String(payload.prompt),/She stands, smiles and waves/);
     assert.match(String(payload.prompt),/or lip sync/i);
     assert.match(String(payload.prompt),/same facial structure/i);
+    assert.match(String(payload.prompt),/Follow the requested physical action/i);
     assert.equal(payload.enable_prompt_expansion,false);
     if(i<3)assert.match(String(payload.negative_prompt),/voiceover/);
     else assert.equal(payload.audio,false);
