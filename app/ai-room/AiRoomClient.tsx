@@ -177,7 +177,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
       </div>
       <nav>
         <Link className="nav-item" href="/database"><span>▦</span> Database</Link>
-        <Link className="nav-item active" href="/ai-room"><span>✦</span> AI ROOM</Link>
+        <Link className={`nav-item ${view!=="usage"?"active":""}`} href="/ai-room"><span>✦</span> AI ROOM</Link>
         <button className={`nav-item ${view==="usage"?"active":""}`} onClick={()=>setView("usage")}><span>◌</span> Usage & Cost</button>
       </nav>
       <div className="side-foot">
@@ -193,6 +193,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
       <div className="ai-main">
       <header><div><span className="kicker">AI VIDEO GENERATOR</span><h1>{view==="generate"?"Create a video":view==="gallery"?"Gallery":view==="history"?"History":"Usage & Cost"}</h1><p>{view==="generate"?"Describe the scene. AI ROOM handles the generation workflow.":view==="gallery"?"Completed generations in one place.":view==="history"?"Recent generation activity and job status.":"Estimated usage from generation history saved in this browser."}</p></div><div className="badge">{providerState.realGeneration?"WAN LIVE":"MVP · DEMO MODE"}</div></header>
       <div className="ai-subnav"><button onClick={()=>setView("generate")} className={view==="generate"?"active":""}>✦ Generate</button><button onClick={()=>setView("gallery")} className={view==="gallery"?"active":""}>▣ Gallery</button><button onClick={()=>setView("history")} className={view==="history"?"active":""}>◷ History</button></div>
+      {actionMessage&&<div className="action-toast" role="status">{actionMessage}<button type="button" onClick={()=>setActionMessage("")}>×</button></div>}
 
       {view==="generate"&&<>
         <div className="studio-grid">
@@ -211,7 +212,6 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
             </div>
             {!providerState.realGeneration&&providerState.checked&&<div className="info-banner">Preview mode — connect the fal.ai provider to enable real video generation.</div>}
             {error&&<div className="error-banner">{error}</div>}
-            {actionMessage&&<div className="info-banner" role="status">{actionMessage}</div>}
             <div className="generate-row"><div><small>Estimated compute & cost</small><strong>{computeTier} · {duration} · {quality} · {formatUsd(currentEstimatedCost)}</strong></div><button className="generate" disabled={!canGenerate||submitting} onClick={generate}>{submitting?"Submitting…":"Generate video ✦"}</button></div>
           </section>
           <aside className="preview card">{readyVideo&&previewJob?<><video className="result-video" src={readyVideo} controls playsInline/>{resultActions(previewJob)}</>:<div className="preview-box"><div className="play">▶</div><strong>Your video appears here</strong><span>Generate a clip to preview it.</span></div>}<div className="preview-meta"><span>{model}</span><span>{ratio}</span><span>{duration}</span><span>{quality}</span></div></aside>
