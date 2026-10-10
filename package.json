@@ -7,8 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "node --conditions=react-server --import tsx --test tests/*.test.ts",
-    "prebuild": "node scripts/diagnose-oci-preview.mjs"
+    "test": "node --conditions=react-server --import tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@xyflow/react": "^12.9.2",
