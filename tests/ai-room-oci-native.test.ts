@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {Readable} from "node:stream";
+import {scryptSync} from "node:crypto";
+import {makeSession,SESSION_COOKIE} from "../lib/ai-room-private-auth";
 import {
   NativeObjectStore,nativeCredentialsConfigured,nativeObjectName,privateVideoPath
 } from "../lib/ai-room-native-objects";
@@ -222,4 +224,46 @@ test("deletion tombstones prevent resurrection and cross-owner deletion",async t
   await assert.rejects(()=>privateReadNative("alice",id,"bytes=0-3"),
     (error:unknown)=>error instanceof VideoEngineError&&error.httpStatus===404);
   assert.equal(objects.has(aliceVideo),false);
+});
+
+test("native video HTTP routes verify cookie owner, byte ranges and private download",async t=>{
+  fixture(t);
+  const salt="bb".repeat(16);
+  process.env.AI_ROOM_USERS_JSON=JSON.stringify(["alice","bobby"].map(id=>({
+    id,salt,passwordHash:scryptSync("fixture-only-password-"+id,salt,64).toString("hex")
+  })));
+  const calls=fakeNative(t);
+  const {GET:stream}=await import("../app/api/ai-room/videos/[id]/stream/route");
+  const {GET:download}=await import("../app/api/ai-room/videos/[id]/download/route");
+  const path="/api/ai-room/videos/"+encodeURIComponent(id);
+  const context={params:Promise.resolve({id})};
+  const makeRequest=(owner:string|null,range?:string)=>new Request(
+    "https://ai-room.test"+path+"/stream",{
+      headers:{
+        ...(owner?{cookie:SESSION_COOKIE+"="+makeSession(owner)}:{}),
+        ...(range?{range}:{})
+      }
+    });
+  const denied=await stream(makeRequest(null),context);
+  assert.equal(denied.status,401);
+  assert.equal(calls.filter(x=>x.startsWith("video:")).length,0);
+
+  const other=await stream(makeRequest("bobby","bytes=0-3"),context);
+  assert.equal(other.status,404);
+  assert.equal(calls.filter(x=>x.startsWith("video:")).length,0);
+
+  const range=await stream(makeRequest("alice","bytes=2-5"),context);
+  assert.equal(range.status,206);
+  assert.equal(range.headers.get("content-range"),"bytes 2-5/10");
+  assert.equal(range.headers.get("content-length"),"4");
+  assert.match(range.headers.get("cache-control")||"",/no-store/);
+  assert.equal(await range.text(),"2345");
+
+  const full=await download(makeRequest("alice"),context);
+  assert.equal(full.status,200);
+  assert.match(full.headers.get("content-disposition")||"",/attachment/);
+  assert.equal(await full.text(),"0123456789");
+  assert.deepEqual(calls.filter(x=>x.startsWith("video:")),[
+    "video:videos/alice/"+id+".mp4","video:videos/alice/"+id+".mp4"
+  ]);
 });
