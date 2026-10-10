@@ -6,7 +6,15 @@
 export type AiRoomContentMode = "standard" | "mature";
 
 export function matureContentModeEnabled(): boolean {
-  return process.env.AI_ROOM_ENABLE_MATURE_MODE === "true";
+  return process.env.AI_ROOM_STORAGE_MODE === "oci" && process.env.AI_ROOM_ENABLE_MATURE_MODE === "true";
+}
+
+/** Operator-reviewed, adult-assured private accounts only. This list is NOT age verification. */
+export function matureAccountEligible(accountId: string | null | undefined): boolean {
+  if (!matureContentModeEnabled() || !accountId || !/^[a-z0-9][a-z0-9_-]{2,39}$/.test(accountId)) return false;
+  const entries = process.env.AI_ROOM_MATURE_USER_ALLOWLIST || "";
+  if (!entries || entries.length > 4096) return false;
+  return entries.split(",").map(id => id.trim()).filter(Boolean).includes(accountId);
 }
 
 const PROHIBITED_PROMPTS: readonly RegExp[] = [
