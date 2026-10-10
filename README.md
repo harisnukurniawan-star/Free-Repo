@@ -55,3 +55,17 @@ The AI ROOM interface runs at `/ai-room`. Its public browser UI does **not** gra
 5. If the environment key is missing or under 16 characters, paid generation is deliberately **locked**. Existing read-only status checks and browser history remain accessible.
 
 This single shared key is intended only for a private/small-team app. For a public multi-user app, add per-user authentication, durable quotas, audited usage, and a central rate limiter before opening the Generate endpoint. Rate-card estimates are not fal.ai balances or invoices. No live paid generation is performed by automated tests.
+
+## Mature content (18+ non-explicit) staging
+
+This branch introduces a **separate, disabled-by-default, non-explicit adult-romance preview**, not a pornography generator.
+
+- **Standard is unchanged by default.** The Mature 18+ tab is disabled until a server administrator sets `AI_ROOM_ENABLE_MATURE_MODE=true`; the browser cannot bypass the backend toggle.
+- A user must affirm that they are 18 or older and that the request involves consenting adults. **Self-declaration is not age verification**; do not enable this feature for a public multi-user site until real age assurance, per-user authentication, moderation and abuse handling are available.
+- The Mature preview currently accepts **text-to-video only**. No reference-face/photo image-to-video is accepted in Mature mode.
+- A baseline keyword-based safety rule blocks common disallowed prompts before a chargeable provider call; it is **not comprehensive moderation**. The model provider's policies and safety controls continue to apply. Explicit sexual acts, nudity, minors in sexual contexts and non-consensual intimate content are not supported.
+- Mature prompts/returned provider links are excluded from browser `localStorage` history. Until per-user OCI Object Storage migration is completed, the video may only be accessible in the open tab and **provider-managed URLs are not guaranteed private**. The on-screen Remove action only removes it from the tab; it does not delete remote provider content.
+- The global generation access key is still a shared operator key, **not a user account**. No mature feature should be enabled in production before the storage/access controls in the private OCI storage workstream are integrated and verified.
+- The branch is reviewed via a PR and is **not auto-deployed/merged to production**. Rollback is disabling `AI_ROOM_ENABLE_MATURE_MODE` or reverting this branch before merge.
+
+Offline tests: `npm test`, `npm run lint`, `npm run build`. No paid fal.ai requests are made by unit tests.
