@@ -1,4 +1,5 @@
 import "server-only";
+import { contentPolicyRejection, matureContentModeEnabled, type AiRoomContentMode } from "./ai-room-content-policy";
 
 import { ApiError, createFalClient } from "@fal-ai/client";
 import { WAN_CATALOG, WAN_MODEL_NAMES, wanEndpointFor, isWanModel, type WanDuration, type WanModel, type WanQuality } from "./wan-models";
@@ -13,6 +14,8 @@ export type VideoRequest = {
   quality: WanQuality;
   imageUrl?: string;
   preserveFace?: boolean;
+  contentMode: AiRoomContentMode;
+  adultConfirmed: boolean;
 };
 export type VideoJob = {
   id: string;
@@ -65,6 +68,18 @@ export function parseVideoRequest(value: unknown): VideoRequest {
     throw new VideoEngineError("Prompt must contain at least 3 characters.", 400, false);
   }
   const mode = option(body.mode, ["text", "image"], "text", "generation mode");
+  const contentMode = option(body.contentMode, ["standard", "mature"], "standard", "content mode");
+  if (body.adultConfirmed !== undefined && typeof body.adultConfirmed !== "boolean") {
+    throw new VideoEngineError("Invalid adult confirmation.", 400, false);
+  }
+  const adultConfirmed = body.adultConfirmed === true;
+  const policyFailure = contentPolicyRejection(body.prompt);
+  if (policyFailure) throw new VideoEngineError(policyFailure, 422, false);
+  if (contentMode === "mature") {
+    if (!matureContentModeEnabled()) throw new VideoEngineError("Mature content mode is disabled by the server administrator.", 403, false);
+    if (!adultConfirmed) throw new VideoEngineError("Confirm you are 18 or older to use mature content mode.", 403, false);
+    if (mode === "image") throw new VideoEngineError("Mature image-to-video is unavailable until age, identity and image-consent checks are implemented.", 403, false);
+  }
   const model = body.model === undefined ? WAN_MODEL_NAMES[0] : body.model;
   if (!isWanModel(model)) throw new VideoEngineError("Unsupported model.", 400, false);
   const duration = option(body.duration, ["5s", "10s"], "5s", "duration");
@@ -93,7 +108,7 @@ export function parseVideoRequest(value: unknown): VideoRequest {
     throw new VideoEngineError("Invalid preserve face setting.", 400, false);
   }
   const preserveFace = mode === "image" && body.preserveFace === true;
-  return { prompt: body.prompt.trim(), mode, model, duration, aspect, quality, imageUrl, preserveFace };
+  return { prompt: body.prompt.trim(), mode, model, duration, aspect, quality, imageUrl, preserveFace, contentMode, adultConfirmed };
 }
 
 function parseJobId(id: string) {
