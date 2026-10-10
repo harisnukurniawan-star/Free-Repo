@@ -18,29 +18,44 @@ NAMESPACE="$(oci os ns get --region "$REGION" --query data --raw-output)"
 if [[ -z "$NAMESPACE" || "$NAMESPACE" == "null" ]]; then
   echo "Unable to resolve OCI Object Storage namespace" >&2; exit 3
 fi
-if oci os bucket get --region "$REGION" --namespace-name "$NAMESPACE" --bucket-name "$BUCKET" >/dev/null 2>&1; then
+# Abort on IAM/network errors; only create if OCI explicitly reports a missing bucket.
+ERR_FILE="$(mktemp)"
+trap 'rm -f "$ERR_FILE"' EXIT
+if oci os bucket get --region "$REGION" --namespace-name "$NAMESPACE" --bucket-name "$BUCKET" >/dev/null 2>"$ERR_FILE"; then
   echo "Bucket already exists; inspecting instead of modifying it."
-else
+elif grep -Eq 'BucketNotFound|NotFound|404' "$ERR_FILE"; then
   echo "Creating new private bucket in $REGION (no public access, no object versioning)."
   oci os bucket create --region "$REGION" --compartment-id "$COMPARTMENT" \
     --namespace-name "$NAMESPACE" --name "$BUCKET" \
     --public-access-type NoPublicAccess --storage-tier Standard --versioning Disabled >/dev/null
+else
+  echo "Bucket inspection failed (permissions or connectivity). No bucket created." >&2
+  exit 3
 fi
 META="$(oci os bucket get --region "$REGION" --namespace-name "$NAMESPACE" --bucket-name "$BUCKET" --output json)"
-PRIVATE_STATE="$(printf '%s' "$META" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"].get("public-access-type","UNKNOWN"))')"
-VERSIONING="$(printf '%s' "$META" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"].get("versioning","UNKNOWN"))')"
-COMPARTMENT_ACTUAL="$(printf '%s' "$META" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"].get("compartment-id","UNKNOWN"))')"
-if [[ "$PRIVATE_STATE" != "NoPublicAccess" ]]; then
-  echo "STOP: Bucket does not have NoPublicAccess." >&2; exit 4
-fi
-if [[ "$VERSIONING" != "Disabled" ]]; then
-  echo "STOP: Versioning is not Disabled. Owner deletion requires additional version cleanup." >&2; exit 4
-fi
-if [[ "$COMPARTMENT_ACTUAL" != "$COMPARTMENT" ]]; then
-  echo "STOP: Existing bucket belongs to another compartment." >&2; exit 4
-fi
-echo "PASS: bucket is private, versioning disabled, compartment verified."
+# Fail closed for settings that could expose copies or undermine owner deletion.
+printf '%s' "$META" | OCI_EXPECTED_COMPARTMENT="$COMPARTMENT" OCI_EXPECTED_BUCKET="$BUCKET" python3 -c '
+import json,os,sys
+data=json.load(sys.stdin)["data"]
+checks={
+  "bucket name": data.get("name")==os.environ["OCI_EXPECTED_BUCKET"],
+  "compartment": data.get("compartment-id")==os.environ["OCI_EXPECTED_COMPARTMENT"],
+  "no public access": data.get("public-access-type")=="NoPublicAccess",
+  "standard tier": data.get("storage-tier")=="Standard",
+  "versioning disabled": data.get("versioning")=="Disabled",
+  "no lifecycle deletion": data.get("object-lifecycle-policy-etag") is None,
+  "no replication": data.get("replication-enabled") is False,
+  "not read-only": data.get("is-read-only") is False,
+}
+for label, passed in checks.items():
+  print(("PASS" if passed else "FAIL")+": "+label)
+if not all(checks.values()):
+  print("STOP: Unsafe/unverified bucket state. Do not enable private AI ROOM.",file=sys.stderr)
+  sys.exit(4)
+print("Bucket privacy preflight PASS. Retain these settings until production cutover.")
+'
 echo "Region: $REGION"
 echo "OCI namespace: $NAMESPACE"
 echo "Bucket: $BUCKET"
-echo "Next: configure a dedicated least-privilege Customer Secret Key in Vercel Preview (never here in chat)."
+echo "Next: configure a dedicated least-privilege Customer Secret Key in Vercel Preview."
+echo "After an authenticated disposable upload/read/delete probe succeeds, set AI_ROOM_OCI_BUCKET_PRIVACY_VERIFIED=true only in the tested environment."
