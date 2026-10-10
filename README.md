@@ -86,3 +86,17 @@ This single shared key is intended only for a private/small-team app. For a publ
 ### Rollback
 
 **Before activation:** revert `AI_ROOM_STORAGE_MODE` to `browser` or remove it, then redeploy the prior production commit. This restores the original browser-based UI without migrating/deleting OCI data. **After activation:** retain OCI bucket and secrets; disable the flag first, then rollback the deployment if necessary. Do not delete the bucket during rollback. Note: browser mode does not display video jobs created only in OCI; restoring private mode recovers them.
+
+## Mature 18+ integration (staging only)
+
+This integration combines private OCI storage with the separate opt-in **non-explicit** adult-romance and cinematic mode. It must remain disabled in production until age assurance, human review, and end-to-end OCI security checks pass.
+
+- The mode requires `AI_ROOM_STORAGE_MODE=oci` **and** `AI_ROOM_ENABLE_MATURE_MODE=true`.
+- `AI_ROOM_MATURE_USER_ALLOWLIST` is a comma-separated list of pre-approved private account IDs (for example `account_one,account_two`). A valid signed owner session and operator approval are both required; neither a browser checkbox nor shared generation API key can grant access. **The operator must perform actual age assurance and account-ownership verification outside this app before placing users on the list.** These checks are not implemented automatically.
+- Text-to-video only. No mature image-to-video/deepfake input. Prompts for pornography, nudity, sexualized minors, and non-consensual intimate imagery remain blocked by baseline guards. These guards are not comprehensive moderation; provider terms also apply.
+- Metadata for both normal and eligible adult jobs is stored in the owner's OCI namespace, with transient signed video links and owner-scoped deletion, retaining until the user deletes them.
+- Mature jobs must never be stored in the public browser history; the private studio uses authenticated server history and no `localStorage` for jobs.
+- Never enable this by setting only the checkbox or feature flag. OCI credentials, private bucket policy, and authenticated owner testing are pre-release blockers.
+- Rollback: set `AI_ROOM_ENABLE_MATURE_MODE=false` immediately; if necessary set `AI_ROOM_STORAGE_MODE=browser` for legacy operation. This does **not** delete private videos. Preserve backup access and do not remove the bucket during rollback.
+
+Run `npm test` and `npm run build` in staging and verify cross-user denial before merge.
