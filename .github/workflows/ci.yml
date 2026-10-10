@@ -14,6 +14,7 @@ jobs:
         with:
           node-version: 22
       - run: npm install
+      - run: bash -n scripts/oci-private-bucket-prepare.sh && node --check scripts/verify-oci-storage.mjs
       - run: npm test
       - run: npx eslint app/ai-room app/api/ai-room lib/ai-room-access.ts lib/ai-room-content-policy.ts lib/ai-room-jobs.ts lib/ai-room-private-auth.ts lib/ai-room-private-storage.ts lib/video-engine.ts lib/wan-models.ts tests/ai-room-mature-mode.test.ts tests/ai-room-private-security.test.ts
       - run: npm run build
