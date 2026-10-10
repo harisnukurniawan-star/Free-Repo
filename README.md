@@ -55,3 +55,48 @@ The AI ROOM interface runs at `/ai-room`. Its public browser UI does **not** gra
 5. If the environment key is missing or under 16 characters, paid generation is deliberately **locked**. Existing read-only status checks and browser history remain accessible.
 
 This single shared key is intended only for a private/small-team app. For a public multi-user app, add per-user authentication, durable quotas, audited usage, and a central rate limiter before opening the Generate endpoint. Rate-card estimates are not fal.ai balances or invoices. No live paid generation is performed by automated tests.
+
+## Private videos on OCI Batam (staged / opt-in)
+
+**Production remains on the existing browser mode until an administrator provisions OCI and explicitly sets `AI_ROOM_STORAGE_MODE=oci`.** This branch does not create a bucket or modify existing customer videos. Do not enable it before testing with a non-sensitive sample. OCI Object Storage has no automatic expiration configured by this code; users retain their files until Delete.
+
+1. Create a **private** Object Storage bucket named `ai-room-private-videos` in **ap-batam-1**. Block all public bucket access and avoid bucket/object lifecycle expiry policies. Keep the bucket in the correct OCI compartment; verify it is accessible to the chosen IAM user. OCI encrypts objects at rest by default.
+2. Create a narrowly scoped OCI IAM user/policy for only the intended bucket with access to read/write/list/delete video objects and job/usage metadata. Create its *Customer Secret Key* (S3-compatible access ID and secret). Do not store it in GitHub or browser.
+3. Set `AI_ROOM_OCI_NAMESPACE`, `AI_ROOM_OCI_BUCKET`, `AI_ROOM_OCI_ACCESS_KEY_ID`, `AI_ROOM_OCI_SECRET_ACCESS_KEY` in Vercel server-side **sensitive** environment variables, with distinct secrets for production versus previews. The adapter uses the **path-style S3 compatibility endpoint in Batam**, not the HeatWave database.
+4. Create `AI_ROOM_SESSION_SECRET` using a cryptographically random 32+ byte value. Create individual user credentials as salted scrypt hashes (never plaintext):
+   ```bash
+   # Bash; input is silent and is NOT written in shell history.
+   read -rsp 'Private account password: ' AI_ROOM_SETUP_PASSWORD; echo
+   AI_ROOM_SETUP_PASSWORD="$AI_ROOM_SETUP_PASSWORD" node -e 'const {randomBytes,scryptSync}=require("node:crypto");const salt=randomBytes(16).toString("hex");const pw=process.env.AI_ROOM_SETUP_PASSWORD;if(!pw||pw.length<16)throw Error("Use 16+ characters");console.log(JSON.stringify({id:"owner_a",salt,passwordHash:scryptSync(pw,salt,64,{N:16384,r:8,p:1,maxmem:64*1024*1024}).toString("hex")}))'
+   unset AI_ROOM_SETUP_PASSWORD
+   ```
+   Place one or more resulting records in the JSON array `AI_ROOM_USERS_JSON`. In private mode, user login creates a 24-hour signed HttpOnly, Secure, SameSite=Strict cookie. The operator key is NOT distributed to browsers in this mode.
+5. Only after OCI bucket, credentials, and preview smoke test work, set `AI_ROOM_STORAGE_MODE=oci` in a **preview environment first**. Sign in as one user; generate a **non-sensitive** video; ensure Gallery, owner-only status, download, and Delete work. Check a second user receives HTTP 404 for the first user's job. Confirm the **OCI object is actually removed** after Delete.
+6. Production rollout requires a separate, reviewed release. Existing browser `localStorage` links/history are not automatically migrated; back up important old MP4s *before* switching. Do not publish previously generated provider URLs.
+
+### Behavior and security boundaries
+
+- **Provider-privacy release gate:** the source result hosted by fal.ai may remain reachable via its original bearer URL even after OCI import. Never assume storing a private OCI copy makes the original fal file private or deletes it. Verify fal.ai media access/retention settings (or a supported provider-side deletion path) before processing sensitive/identifiable videos. OCI-only controls protect only the OCI copy.\n- Completed fal.ai output is copied **server-to-server** to OCI Object Storage. The server accepts only HTTPS files hosted on a `fal.media` subdomain and refuses redirects, unknown length, non-video content, or payloads over 250 MiB. Any import failure stays retryable and never exposes the provider video URL in the private API.
+- Videos and prompts are stored in private OCI objects scoped by authenticated user. Gallery data comes from OCI, **not localStorage**. 5-minute signed HTTPS URLs are returned only after owner authentication. Backup/Download gets a fresh signed URL on each click.
+- Delete replaces the private job metadata with a minimal tombstone and removes its MP4. Small tombstones and the per-day usage ledger remain to prevent accidental resurrection and quota evasion. OCI retention is otherwise indefinite; configure storage/cost alerts and monitor capacity. Deleting from OCI does **not** guarantee immediate deletion from fal.ai's own retention systems.
+- Authenticated users are limited to 5 chargeable generations per UTC day by default. The OCI-backed count is a **best-effort quota**, not an atomic rate limiter, so it is suitable only for a trusted small user group. For open public signup, add a transactional quota reservation + global login throttling/WAF before release.
+- Generation and status routes stay unchanged when `AI_ROOM_STORAGE_MODE` is unset/`browser`. The private UI intentionally does not load old local browser history to avoid mixing identities. Never turn on public Object Storage access to fix a signed-URL issue.
+- A serverless status request may take up to 300s to relay video to OCI; failures remain retriable. Live fal inference costs are not covered by unit tests.
+
+### Rollback
+
+**Before activation:** revert `AI_ROOM_STORAGE_MODE` to `browser` or remove it, then redeploy the prior production commit. This restores the original browser-based UI without migrating/deleting OCI data. **After activation:** retain OCI bucket and secrets; disable the flag first, then rollback the deployment if necessary. Do not delete the bucket during rollback. Note: browser mode does not display video jobs created only in OCI; restoring private mode recovers them.
+
+## Mature 18+ integration (staging only)
+
+This integration combines private OCI storage with the separate opt-in **non-explicit** adult-romance and cinematic mode. It must remain disabled in production until age assurance, human review, and end-to-end OCI security checks pass.
+
+- The mode requires `AI_ROOM_STORAGE_MODE=oci` **and** `AI_ROOM_ENABLE_MATURE_MODE=true`.
+- `AI_ROOM_MATURE_USER_ALLOWLIST` is a comma-separated list of pre-approved private account IDs (for example `account_one,account_two`). A valid signed owner session and operator approval are both required; neither a browser checkbox nor shared generation API key can grant access. **The operator must perform actual age assurance and account-ownership verification outside this app before placing users on the list.** These checks are not implemented automatically.
+- Text-to-video only. No mature image-to-video/deepfake input. Prompts for pornography, nudity, sexualized minors, and non-consensual intimate imagery remain blocked by baseline guards. These guards are not comprehensive moderation; provider terms also apply.
+- Metadata for both normal and eligible adult jobs is stored in the owner's OCI namespace, with transient signed video links and owner-scoped deletion, retaining until the user deletes them.
+- Mature jobs must never be stored in the public browser history; the private studio uses authenticated server history and no `localStorage` for jobs.
+- Never enable this by setting only the checkbox or feature flag. OCI credentials, private bucket policy, and authenticated owner testing are pre-release blockers.
+- Rollback: set `AI_ROOM_ENABLE_MATURE_MODE=false` immediately; if necessary set `AI_ROOM_STORAGE_MODE=browser` for legacy operation. This does **not** delete private videos. Preserve backup access and do not remove the bucket during rollback.
+
+Run `npm test` and `npm run build` in staging and verify cross-user denial before merge.

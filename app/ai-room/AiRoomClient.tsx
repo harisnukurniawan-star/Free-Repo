@@ -6,14 +6,17 @@ import { WAN_CATALOG, WAN_MODEL_NAMES, isWanModel, type WanModel, type WanDurati
 import { estimateWanCostUsd, formatElapsed, normalizeStoredJob, type StoredAiRoomJob } from "@/lib/ai-room-jobs";
 import UsageCostView from "./UsageCostView";
 import {aspectValue, frameReferenceImage, matchesAspect, type AiRoomAspect} from "@/lib/ai-room-framing";
+import type {AiRoomContentMode} from "@/lib/ai-room-content-policy";
 
 type Mode="text"|"image";
 type View="generate"|"gallery"|"history"|"usage";
-type ProviderState={checked:boolean;provider:string;realGeneration:boolean;generationLocked:boolean;generationAuthRequired:boolean};
+type ProviderState={checked:boolean;provider:string;realGeneration:boolean;generationLocked:boolean;generationAuthRequired:boolean;matureModeAvailable:boolean};
 const jobStatuses={queued:"Queued",processing:"Processing",completed:"Ready",failed:"Failed"} as const;
 
 export default function AiRoomClient({initialProviderState}:{initialProviderState:ProviderState}){
   const [mode,setMode]=useState<Mode>("text");
+  const [contentMode,setContentMode]=useState<AiRoomContentMode>("standard");
+  const [adultConfirmed,setAdultConfirmed]=useState(false);
   const [view,setView]=useState<View>("generate");
   const [prompt,setPrompt]=useState("");
   const [model,setModel]=useState<WanModel>("Wan 2.2 Fast");
@@ -57,11 +60,12 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
     },0);
     return()=>window.clearTimeout(timer);
   },[]);
-  useEffect(()=>{let active=true;fetch("/api/ai-room/health").then(async response=>{const data=await response.json();if(active)setProviderState({checked:true,provider:data.provider||"unknown",realGeneration:Boolean(data.realGeneration),generationLocked:Boolean(data.generationLocked),generationAuthRequired:true})}).catch(()=>{if(active)setProviderState({checked:true,provider:"unavailable",realGeneration:false,generationLocked:true,generationAuthRequired:true})});return()=>{active=false}},[]);
+  useEffect(()=>{let active=true;fetch("/api/ai-room/health").then(async response=>{const data=await response.json();if(active)setProviderState({checked:true,provider:data.provider||"unknown",realGeneration:Boolean(data.realGeneration),generationLocked:Boolean(data.generationLocked),generationAuthRequired:true,matureModeAvailable:Boolean(data.matureModeAvailable)})}).catch(()=>{if(active)setProviderState({checked:true,provider:"unavailable",realGeneration:false,generationLocked:true,generationAuthRequired:true,matureModeAvailable:false})});return()=>{active=false}},[]);
   useEffect(()=>{
     if(!hydrated||!historyWritable)return;
     try{
-      localStorage.setItem("ai-room-jobs",JSON.stringify(jobs.slice(0,50)));
+      // Never persist mature prompts or generated links in localStorage until owner-only private storage is ready.
+      localStorage.setItem("ai-room-jobs",JSON.stringify(jobs.filter(job=>job.contentMode!=="mature").slice(0,50)));
     }catch{
       const timer=window.setTimeout(()=>setError("Could not save generation history in this browser. Keep this page open to follow your jobs."),0);
       return()=>window.clearTimeout(timer);
@@ -94,7 +98,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
 
   const modelConfig=WAN_CATALOG[model];
   const estimate=useMemo(()=>estimateWanCostUsd({model,mode,duration,quality}),[model,mode,duration,quality]);
-  const canGenerate=providerState.realGeneration&&!providerState.generationLocked&&(!providerState.generationAuthRequired||accessKey.trim().length>0)&&estimate!==null&&prompt.trim().length>=3&&(mode==="text"||!!referenceImage);
+  const canGenerate=providerState.realGeneration&&!providerState.generationLocked&&(!providerState.generationAuthRequired||accessKey.trim().length>0)&&estimate!==null&&prompt.trim().length>=3&&(mode==="text"||!!referenceImage)&&(contentMode==="standard"||(providerState.matureModeAvailable&&adultConfirmed&&mode==="text"));
   const readyJob=jobs.find(j=>j.videoUrl);
   const readyVideo=readyJob?.videoUrl;
   const completedJobs=jobs.filter(j=>j.videoUrl);
@@ -159,6 +163,8 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
 
   function regenerate(job:StoredAiRoomJob){
     setPrompt(job.prompt);
+    setContentMode(job.contentMode==="mature"&&providerState.matureModeAvailable?"mature":"standard");
+    setAdultConfirmed(false);
     const nextModel=isWanModel(job.model)?job.model:"Wan 2.2 Fast";
     setModel(nextModel);
     const nextMode=job.mode??(job.id.includes(":image:")?"image":"text");
@@ -184,10 +190,10 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
     if(!job.videoUrl)return null;
     return <div className="result-actions">
       <a href={job.videoUrl} download target="_blank" rel="noreferrer">Download</a>
-      <button onClick={()=>void copyVideoLink(job)}>{copiedId===job.id?"Copied ✓":"Copy link"}</button>
+      {job.contentMode!=="mature"&&<button onClick={()=>void copyVideoLink(job)}>{copiedId===job.id?"Copied ✓":"Copy link"}</button>}
       <button onClick={()=>setFullscreenJob(job)}>Fullscreen</button>
       <button onClick={()=>regenerate(job)}>Regenerate</button>
-      <button className="danger" onClick={()=>deleteJob(job.id)}>Delete</button>
+      <button className="danger" onClick={()=>deleteJob(job.id)}>{job.contentMode==="mature"?"Remove from tab":"Delete"}</button>
     </div>;
   }
 
@@ -195,7 +201,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
     if(!canGenerate||submissionInFlight.current)return;
     submissionInFlight.current=true;
     const submittedPrompt=prompt.trim();
-    const submission={mode,model,duration,aspect:ratio as AiRoomAspect,quality,preserveFace:mode==="image"&&preserveFace};
+    const submission={mode,model,duration,aspect:ratio as AiRoomAspect,quality,preserveFace:mode==="image"&&preserveFace,contentMode,adultConfirmed:contentMode==="mature"&&adultConfirmed};
     setSubmitting(true);setError("");
     try{
       // Prepare the first frame before making the single chargeable POST.
@@ -215,6 +221,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
         quality:submission.quality,
         estimatedCostUsd:estimateWanCostUsd({model:submission.model,mode:submission.mode,duration:submission.duration,quality:submission.quality})??undefined,
         preserveFace:submission.preserveFace,
+        contentMode:submission.contentMode,
       },...current]);
       setPrompt(current=>current.trim()===submittedPrompt?"":current);
     }catch(e){setError(e instanceof Error?e.message:"Generation request failed")}
@@ -249,7 +256,17 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
       {view==="generate"&&<>
         <div className="studio-grid">
           <section className="composer card">
-            <div className="tabs"><button onClick={()=>setMode("text")} className={mode==="text"?"active":""}>Text → Video</button><button onClick={()=>setMode("image")} className={mode==="image"?"active":""}>Image → Video</button></div>
+            <div className="content-mode-toggle" role="group" aria-label="Content category">
+              <button type="button" className={contentMode==="standard"?"active":""} aria-pressed={contentMode==="standard"} onClick={()=>{setContentMode("standard");setAdultConfirmed(false)}}>Standard</button>
+              <button type="button" className={contentMode==="mature"?"active":""} aria-pressed={contentMode==="mature"} disabled={!providerState.matureModeAvailable} onClick={()=>{setContentMode("mature");setMode("text");setAdultConfirmed(false)}}>Mature 18+</button>
+            </div>
+            {contentMode==="mature"?<div className="mature-mode-notice">
+              <strong>18+ non-explicit preview</strong>
+              <p>For adult romance, sensual mood and mature cinema only. No explicit sexual acts, nudity, sexualized minors or non-consensual intimate content. Text-to-video only; provider policies still apply.</p>
+              <label className="mature-confirm"><input type="checkbox" checked={adultConfirmed} onChange={event=>setAdultConfirmed(event.target.checked)}/><span>I confirm I am at least 18 years old and my request involves consenting adults.</span></label>
+              <small>This checkbox is self-declaration, not verified age. Mature jobs are not stored in browser history; closing this tab may lose access to the generated video. Private per-user storage is not ready.</small>
+            </div>:!providerState.matureModeAvailable&&<div className="mature-mode-unavailable">Mature 18+ is disabled on this environment pending stronger age verification, moderation and private storage.</div>}
+            <div className="tabs"><button onClick={()=>setMode("text")} className={mode==="text"?"active":""}>Text → Video</button><button disabled={contentMode==="mature"} onClick={()=>setMode("image")} className={mode==="image"?"active":""}>Image → Video</button></div>
             {mode==="image"&&<div>
               <label className="drop"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{onReferenceImage(e.target.files?.[0]);e.currentTarget.value=""}}/>{referenceImage?<><div className="reference-frame" style={{aspectRatio:aspectValue(ratio),width:ratio==="9:16"?"min(100%,168px)":ratio==="1:1"?"min(100%,220px)":"min(100%,280px)"}}><img className="reference-preview" src={referenceImage} alt="Reference preview fitted without cropping"/></div><b>{referenceName}</b><span>Click to replace · JPG, PNG or WEBP · max 2.5 MB</span></>:<><b>＋ Add reference image</b><span>JPG, PNG or WEBP · max 2.5 MB</span></>}</label>
               <label className="face-consistency"><input type="checkbox" checked={preserveFace} onChange={e=>setPreserveFace(e.target.checked)}/><span><strong>Keep face consistent (recommended)</strong><small>Tries to preserve the person\u0027s facial features from the uploaded photo. Actual results depend on the model.</small></span></label>
