@@ -13,6 +13,7 @@ export function privateVideoEnabled(): boolean {
 export function privateVideoConfigured(): boolean {
   return Boolean(
     process.env.AI_ROOM_SESSION_SECRET && process.env.AI_ROOM_SESSION_SECRET.length >= 32 &&
+    process.env.AI_ROOM_OCI_BUCKET_PRIVACY_VERIFIED === "true" &&
     process.env.AI_ROOM_USERS_JSON &&
     process.env.AI_ROOM_OCI_NAMESPACE && process.env.AI_ROOM_OCI_BUCKET &&
     process.env.AI_ROOM_OCI_ACCESS_KEY_ID && process.env.AI_ROOM_OCI_SECRET_ACCESS_KEY
