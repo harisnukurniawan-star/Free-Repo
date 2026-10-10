@@ -119,7 +119,7 @@ export class NativeObjectStore {
           const derived=createHash("md5").update(pub).digest("hex").match(/../g)?.join(":");
           fingerprintMatchesKey=Boolean(derived&&derived.toLowerCase()===(process.env.AI_ROOM_OCI_KEY_FINGERPRINT||"").toLowerCase());
         }catch {}
-        const keyDiagnostic={keyParsable,keyRsa,fingerprintMatchesKey,hasPemFooter:pem.includes("END PRIVATE KEY"),hasPemNewlines:pem.includes("\n"),passphraseProvided:Boolean(process.env.AI_ROOM_OCI_KEY_PASSPHRASE)};
+        const keyDiagnostic={keyParsable,keyRsa,fingerprintMatchesKey,hasPemFooter:pem.includes("END PRIVATE KEY")||pem.includes("END RSA PRIVATE KEY"),hasPemNewlines:pem.includes("\n"),passphraseProvided:Boolean(process.env.AI_ROOM_OCI_KEY_PASSPHRASE)};
         const ownKeys=e!==null && typeof e==="object"?Object.keys(e).filter(k=>/^(?:statusCode|status|httpStatus|code|name|message|cause|errno|syscall|errorCode|error|response|request)$/.test(k)):[];
         const description=(()=>{try{return String(typeof x==="object"&&x!==null&&"message" in x?x.message:"")}catch{return ""}})();
         const category=/NotAuthenticated|401|InvalidSignature|SignatureDoesNotMatch/i.test(description)?"authentication":
