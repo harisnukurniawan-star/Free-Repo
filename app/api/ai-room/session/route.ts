@@ -1,6 +1,7 @@
 import {NextResponse} from "next/server";
 import {makeSession, privateVideoEnabled, privateVideoConfigured, readSession, requireSameOrigin, sessionCookieOptions, SESSION_COOKIE, verifyPassword} from "@/lib/ai-room-private-auth";
 import {videoEngineError, VideoEngineError} from "@/lib/video-engine";
+import {matureAccountEligible} from "@/lib/ai-room-content-policy";
 
 export const runtime="nodejs";
 function errorResponse(error:unknown){
@@ -14,7 +15,7 @@ export async function GET(request:Request){
     const cookie=(request.headers.get("cookie")||"").split(";").map(s=>s.trim())
       .find(s=>s.startsWith(SESSION_COOKIE+"="))?.slice(SESSION_COOKIE.length+1);
     const id=readSession(cookie);
-    return NextResponse.json({enabled:true,authenticated:Boolean(id),user:id},{headers:{"Cache-Control":"no-store"}});
+    return NextResponse.json({enabled:true,authenticated:Boolean(id),user:id,matureEligible:matureAccountEligible(id)},{headers:{"Cache-Control":"no-store"}});
   }catch(error){return errorResponse(error);}
 }
 export async function POST(request:Request){
@@ -27,7 +28,7 @@ export async function POST(request:Request){
     const fields=body as Record<string,unknown>;
     const user=verifyPassword(fields.user as string,fields.password as string);
     if(!user)throw new VideoEngineError("Invalid username or password.",401,false);
-    const response=NextResponse.json({authenticated:true,user},{headers:{"Cache-Control":"no-store"}});
+    const response=NextResponse.json({authenticated:true,user,matureEligible:matureAccountEligible(user)},{headers:{"Cache-Control":"no-store"}});
     response.cookies.set(SESSION_COOKIE,makeSession(user),sessionCookieOptions());
     return response;
   }catch(error){return errorResponse(error);}
