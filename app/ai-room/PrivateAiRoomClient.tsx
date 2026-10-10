@@ -45,16 +45,21 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
   const [referenceName,setReferenceName]=useState("");
   const [openJob,setOpenJob]=useState<PrivateJob|null>(null);
   const pollingActive=useRef(false);
+  // An in-flight response from tester_a must never populate tester_b\'s browser state.
+  const activeUserRef=useRef<string|null>(null);
 
-  const loadJobs=useCallback(async()=>{
+  const loadJobs=useCallback(async(owner:string)=>{
+    if(activeUserRef.current!==owner)return;
     setJobsLoadState(previous=>previous==="ready"?"ready":"loading");
     try{
       const result=await asJson(await fetch("/api/ai-room/jobs",{cache:"no-store"}));
+      if(activeUserRef.current!==owner)return;
       if(!Array.isArray(result.jobs))throw new Error("Invalid private Gallery response.");
       setJobs(result.jobs as PrivateJob[]);
       setJobsLoadState("ready");
       setJobsLoadError("");
     }catch(e){
+      if(activeUserRef.current!==owner)return;
       setJobsLoadState("error");
       setJobsLoadError(e instanceof Error?e.message:"Unable to load private videos.");
       throw e;
@@ -65,7 +70,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
     void (async()=>{
       try{
         const data=await asJson(await fetch("/api/ai-room/session",{cache:"no-store"}));
-        if(active && data.authenticated===true && typeof data.user==="string"){setUser(data.user);setMatureEligible(data.matureEligible===true);}
+        if(active && data.authenticated===true && typeof data.user==="string"){activeUserRef.current=data.user;setUser(data.user);setMatureEligible(data.matureEligible===true);}
       }catch(e){if(active)setError(e instanceof Error?e.message:"Could not check private session");}
       finally{if(active)setChecking(false);}
     })();
@@ -73,9 +78,9 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
   },[]);
   useEffect(()=>{
     if(!user)return;
-    const initial=window.setTimeout(()=>{void loadJobs().catch(()=>{});},0);
+    const initial=window.setTimeout(()=>{void loadJobs(user).catch(()=>{});},0);
     // Refresh short-lived signed preview links; no raw provider URLs are saved locally.
-    const refresh=window.setInterval(()=>{void loadJobs().catch(()=>{});},4*60*1000);
+    const refresh=window.setInterval(()=>{void loadJobs(user).catch(()=>{});},4*60*1000);
     return()=>{window.clearTimeout(initial);window.clearInterval(refresh);};
   },[user,loadJobs]);
   useEffect(()=>{
@@ -107,6 +112,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
         body:JSON.stringify({user:loginName,password})
       }));
       if(typeof data.user!=="string")throw new Error("Invalid session");
+      activeUserRef.current=data.user;
       setUser(data.user);setPassword("");setMatureEligible(data.matureEligible===true);
       setJobs([]);setJobsLoadState("loading");setJobsLoadError("");
       setContentMode("standard");setAdultConfirmed(false);
@@ -116,6 +122,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
   async function logout(){
     try{
       await asJson(await fetch("/api/ai-room/session",{method:"DELETE"}));
+      activeUserRef.current=null;
       setUser(null);setJobs([]);setJobsLoadState("idle");setJobsLoadError("");setOpenJob(null);setReference("");setPrompt("");setError("");
       setMatureEligible(false);setContentMode("standard");setAdultConfirmed(false);
     }catch(e){setError(e instanceof Error?e.message:"Sign-out failed");}
@@ -138,7 +145,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
     if(!(WAN_CATALOG[value].qualities as readonly string[]).includes(quality))setQuality("720p");
   }
   const estimate=useMemo(()=>estimateWanCostUsd({model,mode,duration,quality}),[model,mode,duration,quality]);
-  const canGenerate=ready&&Boolean(user)&&!busy&&prompt.trim().length>=3&&(mode==="text"||Boolean(reference))&&estimate!==null&&(contentMode==="standard"||(matureEligible&&adultConfirmed&&mode==="text"));
+  const canGenerate=ready&&Boolean(user)&&jobsLoadState==="ready"&&!busy&&prompt.trim().length>=3&&(mode==="text"||Boolean(reference))&&estimate!==null&&(contentMode==="standard"||(matureEligible&&adultConfirmed&&mode==="text"));
   async function generate(){
     if(!canGenerate)return;
     setBusy(true);setError("");
@@ -238,7 +245,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
         </section>}
         {(view==="gallery"||view==="history"||view==="generate")&&<section className="queue card">
           <div className="section-head"><div><span className="kicker">PRIVATE STORAGE</span><h2>{view==="gallery"?"Completed videos":view==="history"?"Generation history":"Recent generations"}</h2></div><span>{jobsLoadState==="ready"?visible.length+" jobs":jobsLoadState==="error"?"Unavailable":"Loading…"}</span></div>
-          {jobsLoadState==="error"?<div className="error-banner" role="alert">Unable to load your private videos: {jobsLoadError}. Your saved videos have not been deleted. <button type="button" onClick={()=>{void loadJobs().catch(()=>{});}}>Retry loading</button></div>:
+          {jobsLoadState==="error"?<div className="error-banner" role="alert">Unable to load your private videos: {jobsLoadError}. Your saved videos have not been deleted. <button type="button" onClick={()=>{if(user)void loadJobs(user).catch(()=>{});}}>Retry loading</button></div>:
           jobsLoadState!=="ready"?<div className="empty" role="status">Loading private videos from OCI…</div>:
           visible.length===0?<div className="empty">No saved videos here yet.</div>:
           <div className={view==="gallery"?"gallery-grid":""}>{(view==="generate"?visible.slice(0,8):visible).map(job=>
