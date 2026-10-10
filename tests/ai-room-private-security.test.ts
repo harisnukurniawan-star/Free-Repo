@@ -64,3 +64,51 @@ test("remote media host must be a real HTTPS fal.media domain",()=>{
     assert.throws(()=>assertFalMediaUrl(url),VideoEngineError,url);
   }
 });
+
+test("authenticated private sessions expose Mature eligibility only for approved owner",async t=>{
+  environment(t);
+  const oldFlag=process.env.AI_ROOM_ENABLE_MATURE_MODE;
+  const oldUsers=process.env.AI_ROOM_MATURE_USER_ALLOWLIST;
+  t.after(()=>{
+    if(oldFlag===undefined)delete process.env.AI_ROOM_ENABLE_MATURE_MODE;else process.env.AI_ROOM_ENABLE_MATURE_MODE=oldFlag;
+    if(oldUsers===undefined)delete process.env.AI_ROOM_MATURE_USER_ALLOWLIST;else process.env.AI_ROOM_MATURE_USER_ALLOWLIST=oldUsers;
+  });
+  process.env.AI_ROOM_ENABLE_MATURE_MODE="true";
+  process.env.AI_ROOM_MATURE_USER_ALLOWLIST="owner_a";
+  const {GET}=await import("../app/api/ai-room/session/route");
+  const get=async (id:string)=>{
+    const token=makeSession(id);
+    const response=await GET(new Request("https://site.test/api/ai-room/session",{
+      headers:{cookie:SESSION_COOKIE+"="+token}
+    }));
+    assert.equal(response.status,200);
+    return response.json();
+  };
+  assert.equal((await get("owner_a")).matureEligible,true);
+  assert.equal((await get("owner_b")).matureEligible,false);
+  const outsider=await GET(new Request("https://site.test/api/ai-room/session"));
+  assert.equal((await outsider.json()).matureEligible,false);
+});
+
+test("unapproved private owner cannot submit Mature before chargeable provider call",async t=>{
+  environment(t);
+  const oldFlag=process.env.AI_ROOM_ENABLE_MATURE_MODE;
+  const oldUsers=process.env.AI_ROOM_MATURE_USER_ALLOWLIST;
+  const originalFetch=globalThis.fetch;
+  let calls=0;
+  t.after(()=>{
+    if(oldFlag===undefined)delete process.env.AI_ROOM_ENABLE_MATURE_MODE;else process.env.AI_ROOM_ENABLE_MATURE_MODE=oldFlag;
+    if(oldUsers===undefined)delete process.env.AI_ROOM_MATURE_USER_ALLOWLIST;else process.env.AI_ROOM_MATURE_USER_ALLOWLIST=oldUsers;
+    globalThis.fetch=originalFetch;
+  });
+  process.env.AI_ROOM_ENABLE_MATURE_MODE="true";
+  process.env.AI_ROOM_MATURE_USER_ALLOWLIST="owner_a";
+  globalThis.fetch=(async()=>{calls++;throw new Error("Provider must not be called");}) as typeof fetch;
+  const {privateSubmit}=await import("../lib/ai-room-private-storage");
+  await assert.rejects(()=>privateSubmit("owner_b",{
+    prompt:"Two consenting adult partners dancing slowly in a candlelit restaurant",
+    model:"Wan 2.2 Fast",mode:"text",duration:"5s",aspect:"16:9",quality:"720p",
+    contentMode:"mature",adultConfirmed:true
+  }),(e:unknown)=>e instanceof VideoEngineError&&e.httpStatus===403);
+  assert.equal(calls,0);
+});
