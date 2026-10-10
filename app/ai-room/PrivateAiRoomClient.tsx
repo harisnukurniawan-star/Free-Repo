@@ -61,10 +61,10 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
   },[]);
   useEffect(()=>{
     if(!user)return;
-    void loadJobs().catch(e=>setError(e instanceof Error?e.message:"Could not load videos"));
+    const initial=window.setTimeout(()=>{void loadJobs().catch(e=>setError(e instanceof Error?e.message:"Could not load videos"));},0);
     // Refresh short-lived signed preview links; no raw provider URLs are saved locally.
     const refresh=window.setInterval(()=>{void loadJobs().catch(()=>{});},4*60*1000);
-    return()=>window.clearInterval(refresh);
+    return()=>{window.clearTimeout(initial);window.clearInterval(refresh);};
   },[user,loadJobs]);
   useEffect(()=>{
     if(!user || !jobs.some(j=>j.status==="queued" || j.status==="processing"))return;
@@ -169,7 +169,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
       {error&&<div className="error-banner" role="alert">{error}<button onClick={()=>setError("")}> × </button></div>}
       {checking?<div className="card">Checking private session…</div>:!user?
         <section className="card composer"><h2>Sign in to AI ROOM</h2>
-          <p>Private videos are available only in their owner's account.</p>
+          <p>Private videos are available only in their own account.</p>
           <label className="field"><span>Username</span><input value={loginName} autoComplete="username" onChange={e=>setLoginName(e.target.value)}/></label>
           <label className="field"><span>Password</span><input type="password" value={password} autoComplete="current-password" onChange={e=>setPassword(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")void login();}}/></label>
           <div className="generate-row"><span>24-hour secure session</span><button className="generate" disabled={busy||!ready||!loginName||!password} onClick={()=>void login()}>Sign in</button></div>
