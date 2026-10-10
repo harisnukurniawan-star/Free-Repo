@@ -54,4 +54,35 @@ try {
   }catch(e){ console.log("OCI_BUILD_PROBE_SIGNED_LIST",JSON.stringify({ok:false,...tagged(e)})); }
   finally{client.close();}
 }catch(e){console.log("OCI_BUILD_PROBE_INIT",JSON.stringify(tagged(e)));}
+// Cross-check OCI SDK against a minimal Node crypto signed GET using the same credentials.
+// Read-only: requests at most one list item, and emits status only, never objects or auth headers.
+try {
+  const {createSign,createPrivateKey,sign,verify}=await import("node:crypto");
+  const pem=(process.env.AI_ROOM_OCI_PRIVATE_KEY||"").replace(/\\n/g,"\n");
+  const pk=createPrivateKey({key:pem,passphrase:process.env.AI_ROOM_OCI_KEY_PASSPHRASE||undefined});
+  const sample=Buffer.from("AI_ROOM_DIAGNOSTIC_NO_DATA");
+  const signature=sign("RSA-SHA256",sample,pk);
+  console.log("OCI_BUILD_PROBE_CRYPTO",JSON.stringify({
+    keyType:pk.asymmetricKeyType,localSign:signature.length>0,
+    localVerify:verify("RSA-SHA256",sample,await import("node:crypto").then(m=>m.createPublicKey(pk)),signature)
+  }));
+  const ns=process.env.AI_ROOM_OCI_NAMESPACE||"";
+  const bucket=process.env.AI_ROOM_OCI_BUCKET||"";
+  if(!/^[A-Za-z0-9_-]{1,100}$/.test(ns)||!/^[A-Za-z0-9._-]{1,200}$/.test(bucket))throw new Error("invalid namespace or bucket");
+  const host="objectstorage.ap-batam-1.oraclecloud.com";
+  const url=new URL("https://"+host+"/n/"+encodeURIComponent(ns)+"/b/"+encodeURIComponent(bucket)+"/o");
+  url.searchParams.set("prefix","jobs/tester_a/");
+  url.searchParams.set("limit","1");
+  const xdate=new Date().toUTCString();
+  const message="(request-target): get "+url.pathname+url.search+"\nhost: "+host+"\nx-date: "+xdate;
+  const signing=createSign("RSA-SHA256");
+  signing.update(message,"utf8");
+  const signed=signing.sign(pk,"base64");
+  const keyId=[process.env.AI_ROOM_OCI_TENANCY_ID,process.env.AI_ROOM_OCI_USER_ID,process.env.AI_ROOM_OCI_KEY_FINGERPRINT].join("/");
+  const auth='Signature version="1",keyId="'+keyId+'",algorithm="rsa-sha256",headers="(request-target) host x-date",signature="'+signed+'"';
+  const res=await fetch(url,{method:"GET",headers:{Authorization:auth,"x-date":xdate,host},signal:AbortSignal.timeout(9000),cache:"no-store"});
+  console.log("OCI_BUILD_PROBE_RAW_SIGNED_LIST",JSON.stringify({ok:res.ok,status:res.status}));
+  await res.body?.cancel();
+}catch(e){console.log("OCI_BUILD_PROBE_RAW_SIGNED_LIST",JSON.stringify({ok:false,...tagged(e)}));}
+
 console.log("OCI_BUILD_PROBE_DONE");
