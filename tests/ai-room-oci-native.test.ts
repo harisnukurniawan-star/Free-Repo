@@ -5,6 +5,7 @@ import {
   NativeObjectStore,nativeCredentialsConfigured,nativeObjectName,privateVideoPath
 } from "../lib/ai-room-native-objects";
 import {privateReadNative} from "../lib/ai-room-private-storage";
+import {makeSession,SESSION_COOKIE} from "../lib/ai-room-private-auth";
 import {VideoEngineError} from "../lib/video-engine";
 
 const id="fast:text:nativevideo_001";
@@ -90,4 +91,75 @@ test("owner-only native MP4 stream handles byte ranges and denies invalid ranges
     (error:unknown)=>error instanceof VideoEngineError&&error.httpStatus===416);
   await assert.rejects(()=>privateReadNative("alice",id,"bytes=0-1,3-4"),
     (error:unknown)=>error instanceof VideoEngineError&&error.httpStatus===416);
+});
+
+test("Gallery API lists only the signed-in owner's records and never borrows another owner",async t=>{
+  fixture(t);
+  const salt="ab".repeat(16);
+  process.env.AI_ROOM_USERS_JSON=JSON.stringify([
+    {id:"alice",salt,passwordHash:"cc".repeat(64)},
+    {id:"bobby",salt,passwordHash:"dd".repeat(64)}
+  ]);
+  const proto=NativeObjectStore.prototype;
+  const previous={list:proto.list,getText:proto.getText,head:proto.head};
+  const calls:string[]=[];
+  t.after(()=>{proto.list=previous.list;proto.getText=previous.getText;proto.head=previous.head;});
+  proto.list=async(prefix:string)=>{
+    calls.push("list:"+prefix);
+    if(prefix==="jobs/alice/")return {
+      Contents:[{Key:"jobs/alice/"+id+".json",LastModified:new Date("2026-10-10T00:00:00Z")}],
+      KeyCount:1,IsTruncated:false
+    };
+    return {Contents:[],KeyCount:0,IsTruncated:false};
+  };
+  proto.getText=async(key:string)=>{
+    calls.push("get:"+key);
+    if(key==="jobs/alice/"+id+".json")return JSON.stringify({
+      id,owner:"alice",prompt:"Private test video",model:"Wan 2.2 Fast",
+      status:"completed",mode:"text",aspect:"16:9",quality:"720p",
+      duration:"5s",createdAt:"2026-10-10T00:00:00Z"
+    });
+    throw Error("Cross-owner metadata read");
+  };
+  proto.head=async(key:string)=>{
+    calls.push("head:"+key);
+    if(key.startsWith("deleted/")){
+      const e=new Error("Missing");e.name="NotFound";throw e;
+    }
+    throw Error("Unexpected owner lookup");
+  };
+  const {GET}=await import("../app/api/ai-room/jobs/route");
+  const request=(user:string)=>new Request("https://site.test/api/ai-room/jobs",{
+    headers:{cookie:SESSION_COOKIE+"="+makeSession(user)}
+  });
+  const alice=await GET(request("alice"));
+  assert.equal(alice.status,200);
+  const aliceJobs=(await alice.json()).jobs as {id:string;videoUrl:string}[];
+  assert.equal(aliceJobs.length,1);
+  assert.equal(aliceJobs[0].id,id);
+  assert.match(aliceJobs[0].videoUrl,/^\/api\/ai-room\/videos\//);
+  const bobby=await GET(request("bobby"));
+  assert.equal(bobby.status,200);
+  assert.deepEqual((await bobby.json()).jobs,[]);
+  assert.ok(calls.includes("list:jobs/alice/"));
+  assert.ok(calls.includes("list:jobs/bobby/"));
+  assert.equal(calls.some(x=>x==="get:jobs/bobby/"+id+".json"),false);
+});
+
+test("Gallery API reports OCI failure instead of pretending the bucket is empty",async t=>{
+  fixture(t);
+  const salt="ab".repeat(16);
+  process.env.AI_ROOM_USERS_JSON=JSON.stringify([{id:"alice",salt,passwordHash:"cc".repeat(64)}]);
+  const proto=NativeObjectStore.prototype;
+  const previous=proto.list;
+  t.after(()=>{proto.list=previous;});
+  proto.list=async()=>{throw new VideoEngineError("Unable to list private videos.",503,true);};
+  const {GET}=await import("../app/api/ai-room/jobs/route");
+  const res=await GET(new Request("https://site.test/api/ai-room/jobs",{
+    headers:{cookie:SESSION_COOKIE+"="+makeSession("alice")}
+  }));
+  assert.equal(res.status,503);
+  const result=await res.json();
+  assert.equal(Array.isArray(result.jobs),false);
+  assert.equal(typeof result.error,"string");
 });
