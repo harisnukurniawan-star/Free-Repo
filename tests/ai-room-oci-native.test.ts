@@ -4,7 +4,7 @@ import {Readable} from "node:stream";
 import {scryptSync} from "node:crypto";
 import {makeSession,SESSION_COOKIE} from "../lib/ai-room-private-auth";
 import {
-  NativeObjectStore,nativeCredentialsConfigured,nativeObjectName,privateVideoPath
+  NativeObjectStore,nativeCredentialsConfigured,nativeObjectName,normalizeOciId,privateVideoPath
 } from "../lib/ai-room-native-objects";
 import {privateDelete,privateReadNative} from "../lib/ai-room-private-storage";
 import {VideoEngineError} from "../lib/video-engine";
@@ -265,4 +265,17 @@ test("native video HTTP routes verify cookie owner, byte ranges and private down
   assert.deepEqual(calls.filter(x=>x.startsWith("video:")),[
     "video:videos/alice/"+id+".mp4","video:videos/alice/"+id+".mp4"
   ]);
+});
+
+test("OCI signing IDs normalize hidden CRLF and control characters without changing their identity",t=>{
+  fixture(t);
+  const user="ocid1.user.oc1..example";
+  const tenancy="ocid1.tenancy.oc1..example";
+  process.env.AI_ROOM_OCI_USER_ID=user+"\r\n";
+  process.env.AI_ROOM_OCI_TENANCY_ID="\u200b"+tenancy+"\n";
+  assert.equal(normalizeOciId(process.env.AI_ROOM_OCI_USER_ID),user);
+  assert.equal(normalizeOciId(process.env.AI_ROOM_OCI_TENANCY_ID),tenancy);
+  assert.equal(nativeCredentialsConfigured(),true);
+  process.env.AI_ROOM_OCI_USER_ID=user+"bad!header";
+  assert.equal(nativeCredentialsConfigured(),false);
 });
