@@ -29,6 +29,8 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
   const [error,setError]=useState("");
   const [view,setView]=useState<Screen>("generate");
   const [jobs,setJobs]=useState<PrivateJob[]>([]);
+  const [jobsLoadState,setJobsLoadState]=useState<"idle"|"loading"|"ready"|"error">("idle");
+  const [jobsLoadError,setJobsLoadError]=useState("");
   const [mode,setMode]=useState<"text"|"image">("text");
   const [contentMode,setContentMode]=useState<"standard"|"mature">("standard");
   const [matureEligible,setMatureEligible]=useState(false);
@@ -43,43 +45,82 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
   const [referenceName,setReferenceName]=useState("");
   const [openJob,setOpenJob]=useState<PrivateJob|null>(null);
   const pollingActive=useRef(false);
+  // An in-flight response from tester_a must never populate tester_b\'s browser state.
+  const activeUserRef=useRef<string|null>(null);
+  const sessionEpoch=useRef(0);
+  const gallerySequence=useRef(0);
+  const galleryRequests=useRef(new Set<AbortController>());
+  const invalidateSession=useCallback(()=>{
+    sessionEpoch.current+=1;
+    gallerySequence.current+=1;
+    for(const request of galleryRequests.current)request.abort();
+    galleryRequests.current.clear();
+  },[]);
 
-  const loadJobs=useCallback(async()=>{
-    const result=await asJson(await fetch("/api/ai-room/jobs",{cache:"no-store"}));
-    if(Array.isArray(result.jobs))setJobs(result.jobs as PrivateJob[]);
+  const loadJobs=useCallback(async(owner:string)=>{
+    if(activeUserRef.current!==owner)return;
+    const epoch=sessionEpoch.current;
+    const sequence=++gallerySequence.current;
+    const request=new AbortController();
+    galleryRequests.current.add(request);
+    setJobsLoadState(previous=>previous==="ready"?"ready":"loading");
+    try{
+      const result=await asJson(await fetch("/api/ai-room/jobs",{
+        cache:"no-store",signal:request.signal
+      }));
+      if(activeUserRef.current!==owner || epoch!==sessionEpoch.current ||
+        sequence!==gallerySequence.current)return;
+      if(!Array.isArray(result.jobs))throw new Error("Invalid private Gallery response.");
+      setJobs(result.jobs as PrivateJob[]);
+      setJobsLoadState("ready");
+      setJobsLoadError("");
+    }catch(e){
+      if(request.signal.aborted || activeUserRef.current!==owner ||
+        epoch!==sessionEpoch.current || sequence!==gallerySequence.current)return;
+      setJobsLoadState("error");
+      setJobsLoadError(e instanceof Error?e.message:"Unable to load private videos.");
+      throw e;
+    }finally{
+      galleryRequests.current.delete(request);
+    }
   },[]);
   useEffect(()=>{
     let active=true;
     void (async()=>{
       try{
         const data=await asJson(await fetch("/api/ai-room/session",{cache:"no-store"}));
-        if(active && data.authenticated===true && typeof data.user==="string"){setUser(data.user);setMatureEligible(data.matureEligible===true);}
+        if(active && data.authenticated===true && typeof data.user==="string"){invalidateSession();activeUserRef.current=data.user;setUser(data.user);setMatureEligible(data.matureEligible===true);}
       }catch(e){if(active)setError(e instanceof Error?e.message:"Could not check private session");}
       finally{if(active)setChecking(false);}
     })();
     return()=>{active=false;};
-  },[]);
+  },[invalidateSession]);
+  useEffect(()=>()=>invalidateSession(),[invalidateSession]);
   useEffect(()=>{
     if(!user)return;
-    const initial=window.setTimeout(()=>{void loadJobs().catch(e=>setError(e instanceof Error?e.message:"Could not load videos"));},0);
+    const initial=window.setTimeout(()=>{void loadJobs(user).catch(()=>{});},0);
     // Refresh short-lived signed preview links; no raw provider URLs are saved locally.
-    const refresh=window.setInterval(()=>{void loadJobs().catch(()=>{});},4*60*1000);
+    const refresh=window.setInterval(()=>{void loadJobs(user).catch(()=>{});},4*60*1000);
     return()=>{window.clearTimeout(initial);window.clearInterval(refresh);};
   },[user,loadJobs]);
   useEffect(()=>{
     if(!user || !jobs.some(j=>j.status==="queued" || j.status==="processing"))return;
     const timer=window.setInterval(()=>{
       if(pollingActive.current)return;
+      const epoch=sessionEpoch.current;
       pollingActive.current=true;
       const pending=jobs.filter(j=>j.status==="queued"||j.status==="processing");
       void (async()=>{
         try {for(const job of pending){
+          if(epoch!==sessionEpoch.current)break;
           try{
             const result=await asJson(await fetch("/api/ai-room/generate/"+encodeURIComponent(job.id),{cache:"no-store"}));
+            if(epoch!==sessionEpoch.current)break;
             const update=result.job as PrivateJob;
             setJobs(current=>current.map(row=>row.id===job.id?update:row));
           }catch(e){
-            setError(e instanceof Error?e.message:"Status temporarily unavailable; job was not resubmitted");
+            if(epoch===sessionEpoch.current)
+              setError(e instanceof Error?e.message:"Status temporarily unavailable; job was not resubmitted");
           }
         }}finally{pollingActive.current=false;}
       })();
@@ -95,7 +136,10 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
         body:JSON.stringify({user:loginName,password})
       }));
       if(typeof data.user!=="string")throw new Error("Invalid session");
+      invalidateSession();
+      activeUserRef.current=data.user;
       setUser(data.user);setPassword("");setMatureEligible(data.matureEligible===true);
+      setJobs([]);setJobsLoadState("loading");setJobsLoadError("");
       setContentMode("standard");setAdultConfirmed(false);
     }catch(e){setError(e instanceof Error?e.message:"Login failed");}
     finally{setBusy(false);}
@@ -103,7 +147,9 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
   async function logout(){
     try{
       await asJson(await fetch("/api/ai-room/session",{method:"DELETE"}));
-      setUser(null);setJobs([]);setOpenJob(null);setReference("");setPrompt("");setError("");
+      invalidateSession();
+      activeUserRef.current=null;
+      setUser(null);setBusy(false);setJobs([]);setJobsLoadState("idle");setJobsLoadError("");setOpenJob(null);setReference("");setPrompt("");setError("");
       setMatureEligible(false);setContentMode("standard");setAdultConfirmed(false);
     }catch(e){setError(e instanceof Error?e.message:"Sign-out failed");}
   }
@@ -113,9 +159,10 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
     if(!["image/jpeg","image/png","image/webp"].includes(file.type) || file.size>2_500_000){
       setError("Use a JPG, PNG or WEBP reference no larger than 2.5 MB.");return;
     }
+    const epoch=sessionEpoch.current;
     const reader=new FileReader();
-    reader.onload=()=>{if(typeof reader.result==="string"){setReference(reader.result);setReferenceName(file.name);}};
-    reader.onerror=()=>setError("Could not read reference photo");
+    reader.onload=()=>{if(epoch===sessionEpoch.current && typeof reader.result==="string"){setReference(reader.result);setReferenceName(file.name);}};
+    reader.onerror=()=>{if(epoch===sessionEpoch.current)setError("Could not read reference photo");};
     reader.readAsDataURL(file);
   }
   function pickModel(value:string){
@@ -125,9 +172,10 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
     if(!(WAN_CATALOG[value].qualities as readonly string[]).includes(quality))setQuality("720p");
   }
   const estimate=useMemo(()=>estimateWanCostUsd({model,mode,duration,quality}),[model,mode,duration,quality]);
-  const canGenerate=ready&&Boolean(user)&&!busy&&prompt.trim().length>=3&&(mode==="text"||Boolean(reference))&&estimate!==null&&(contentMode==="standard"||(matureEligible&&adultConfirmed&&mode==="text"));
+  const canGenerate=ready&&Boolean(user)&&jobsLoadState==="ready"&&!busy&&prompt.trim().length>=3&&(mode==="text"||Boolean(reference))&&estimate!==null&&(contentMode==="standard"||(matureEligible&&adultConfirmed&&mode==="text"));
   async function generate(){
     if(!canGenerate)return;
+    const epoch=sessionEpoch.current;
     setBusy(true);setError("");
     try{
       const imageUrl=mode==="image"?await frameReferenceImage(reference,ratio):undefined;
@@ -135,20 +183,25 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({prompt:prompt.trim(),mode,model,duration,aspect:ratio,quality,preserveFace:mode==="image"&&preserveFace,imageUrl,contentMode,adultConfirmed:contentMode==="mature"&&adultConfirmed})
       }));
+      if(epoch!==sessionEpoch.current)return;
       setJobs(current=>[result.job as PrivateJob,...current]);
       setPrompt("");
-    }catch(e){setError(e instanceof Error?e.message:"Generate failed. Check Gallery before retrying.");}
-    finally{setBusy(false);}
+    }catch(e){
+      if(epoch===sessionEpoch.current)setError(e instanceof Error?e.message:"Generate failed. Check Gallery before retrying.");
+    }finally{if(epoch===sessionEpoch.current)setBusy(false);}
   }
   async function deleteJob(job:PrivateJob){
     if(!window.confirm("Permanently delete this video from private OCI storage? This cannot be undone."))return;
+    const epoch=sessionEpoch.current;
     setBusy(true);setError("");
     try{
       await asJson(await fetch("/api/ai-room/generate/"+encodeURIComponent(job.id),{method:"DELETE"}));
+      if(epoch!==sessionEpoch.current)return;
       setJobs(current=>current.filter(item=>item.id!==job.id));
       setOpenJob(current=>current?.id===job.id?null:current);
-    }catch(e){setError(e instanceof Error?e.message:"Delete failed; retry safely");}
-    finally{setBusy(false);}
+    }catch(e){
+      if(epoch===sessionEpoch.current)setError(e instanceof Error?e.message:"Delete failed; retry safely");
+    }finally{if(epoch===sessionEpoch.current)setBusy(false);}
   }
   const completed=jobs.filter(j=>j.status==="completed");
   const latest=completed[0];
@@ -220,12 +273,14 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
           </aside>
         </div>}
         {view==="usage"&&<section className="queue card"><h2>Usage</h2>
-          <p>{jobs.length} saved jobs · {completed.length} completed. Cost estimates are not billing statements.</p>
+          <p>{jobsLoadState==="ready"?`${jobs.length} saved jobs · ${completed.length} completed.`:"Video inventory is not available until storage responds successfully."} Cost estimates are not billing statements.</p>
           <p>Videos remain in OCI until you delete them. Your daily generation limit is configured by the operator.</p>
         </section>}
         {(view==="gallery"||view==="history"||view==="generate")&&<section className="queue card">
-          <div className="section-head"><div><span className="kicker">PRIVATE STORAGE</span><h2>{view==="gallery"?"Completed videos":view==="history"?"Generation history":"Recent generations"}</h2></div><span>{visible.length} jobs</span></div>
-          {visible.length===0?<div className="empty">No saved videos here yet.</div>:
+          <div className="section-head"><div><span className="kicker">PRIVATE STORAGE</span><h2>{view==="gallery"?"Completed videos":view==="history"?"Generation history":"Recent generations"}</h2></div><span>{jobsLoadState==="ready"?visible.length+" jobs":jobsLoadState==="error"?"Unavailable":"Loading…"}</span></div>
+          {jobsLoadState==="error"?<div className="error-banner" role="alert">Unable to load your private videos: {jobsLoadError}. Your saved videos have not been deleted. <button type="button" onClick={()=>{if(user)void loadJobs(user).catch(()=>{});}}>Retry loading</button></div>:
+          jobsLoadState!=="ready"?<div className="empty" role="status">Loading private videos from OCI…</div>:
+          visible.length===0?<div className="empty">No saved videos here yet.</div>:
           <div className={view==="gallery"?"gallery-grid":""}>{(view==="generate"?visible.slice(0,8):visible).map(job=>
             <article className={view==="gallery"?"gallery-item":"job"} key={job.id}>
               {job.videoUrl&&view==="gallery"?<video src={job.videoUrl} controls playsInline style={{aspectRatio:aspectValue(job.aspect)}}/>:<div className="thumb">✦</div>}

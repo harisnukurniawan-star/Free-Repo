@@ -16,6 +16,8 @@
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "@fal-ai/client": "1.10.1",
+    "oci-common": "^2.142.2",
+    "oci-objectstorage": "^2.142.2",
     "@aws-sdk/client-s3": "^3.800.0",
     "@aws-sdk/lib-storage": "^3.800.0",
     "@aws-sdk/s3-request-presigner": "^3.800.0",
