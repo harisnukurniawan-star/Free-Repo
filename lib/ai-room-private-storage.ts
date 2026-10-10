@@ -5,6 +5,7 @@ import {Upload} from "@aws-sdk/lib-storage";
 import {getSignedUrl} from "@aws-sdk/s3-request-presigner";
 import {getVideoEngine, parseVideoRequest, VideoEngineError, type VideoJob} from "./video-engine";
 import {privateVideoConfigured} from "./ai-room-private-auth";
+import {matureAccountEligible} from "./ai-room-content-policy";
 
 const REGION="ap-batam-1";
 const JOB_ID=/^(?:fast|a14b|v27|v3|v3prime):(text|image):[A-Za-z0-9_-]{1,128}$/;
@@ -14,7 +15,7 @@ type RecordStatus="queued"|"processing"|"completed"|"failed"|"deleted";
 export type PrivateRecord = {
   id:string;owner:string;prompt:string;model:string;mode:string;aspect:string;quality:string;
   duration:string;createdAt:string;status:RecordStatus;videoWidth?:number;videoHeight?:number;
-  error?:string;
+  error?:string;contentMode?:"standard"|"mature";
 };
 type ClientJob=Omit<PrivateRecord,"owner"> & {videoUrl?:string;downloadUrl?:string};
 
@@ -154,11 +155,12 @@ async function markUsage(owner:string,id:string):Promise<void>{
 export async function privateSubmit(owner:string,body:unknown):Promise<ClientJob>{
   settings();
   const input=parseVideoRequest(body);
+  if(input.contentMode==="mature" && !matureAccountEligible(owner))throw new VideoEngineError("Mature 18+ access is not enabled for this private account.",403,false);
   await assertQuota(owner);
   const created=await getVideoEngine().submit(input);
   const record:PrivateRecord={
     id:created.id,owner,prompt:input.prompt,model:input.model,mode:input.mode,aspect:input.aspect,
-    quality:input.quality,duration:input.duration,createdAt:created.createdAt,status:"queued",
+    quality:input.quality,duration:input.duration,createdAt:created.createdAt,status:"queued",contentMode:input.contentMode,
   };
   // A successful provider request is chargeable; never retry submission after a persistence error.
   try{
