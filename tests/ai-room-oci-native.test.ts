@@ -7,7 +7,6 @@ import {
   NativeObjectStore,nativeCredentialsConfigured,nativeObjectName,privateVideoPath
 } from "../lib/ai-room-native-objects";
 import {privateDelete,privateReadNative} from "../lib/ai-room-private-storage";
-import {makeSession,SESSION_COOKIE} from "../lib/ai-room-private-auth";
 import {VideoEngineError} from "../lib/video-engine";
 
 const id="fast:text:nativevideo_001";
