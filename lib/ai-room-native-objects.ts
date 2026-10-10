@@ -11,16 +11,12 @@ export function nativeStorageEnabled():boolean {
   return process.env.AI_ROOM_OCI_DRIVER === "native";
 }
 export function nativeCredentialsConfigured():boolean {
+  const key=(process.env.AI_ROOM_OCI_PRIVATE_KEY||"").replace(/\\n/g,"\n");
   return Boolean(
     /^ocid1\.tenancy\./.test(process.env.AI_ROOM_OCI_TENANCY_ID||"") &&
     /^ocid1\.user\./.test(process.env.AI_ROOM_OCI_USER_ID||"") &&
     /^[0-9a-f]{2}(?::[0-9a-f]{2}){15}$/i.test(process.env.AI_ROOM_OCI_KEY_FINGERPRINT||"") &&
-    (process.env.AI_ROOM_OCI_PRIVATE_KEY||"").replace(/\\n/g,"\n").includes("BEGIN RSA PRIVATE KEY") ||
-    // OCI can issue PEM files with PKCS#8 BEGIN PRIVATE KEY headers.
-    (Boolean(process.env.AI_ROOM_OCI_TENANCY_ID?.startsWith("ocid1.tenancy.")) &&
-     Boolean(process.env.AI_ROOM_OCI_USER_ID?.startsWith("ocid1.user.")) &&
-     /^[0-9a-f]{2}(?::[0-9a-f]{2}){15}$/i.test(process.env.AI_ROOM_OCI_KEY_FINGERPRINT||"") &&
-     (process.env.AI_ROOM_OCI_PRIVATE_KEY||"").replace(/\\n/g,"\n").includes("BEGIN PRIVATE KEY"))
+    (key.includes("BEGIN RSA PRIVATE KEY") || key.includes("BEGIN PRIVATE KEY"))
   );
 }
 export function nativeObjectName(key:string):string {
