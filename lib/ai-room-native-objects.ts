@@ -102,7 +102,16 @@ export class NativeObjectStore {
       const r=await c.listObjects({...config(),prefix,limit,fields:"name,timeModified"});
       const contents=(r.listObjects.objects||[]).map(o=>({Key:o.name,LastModified:o.timeModified}));
       return {Contents:contents,KeyCount:contents.length,IsTruncated:Boolean(r.listObjects.nextStartWith)};
-    }catch(e){return nativeError(e);}finally{c.close();}
+    }catch(e){
+      // Temporary Preview-only troubleshooting. Never log OCI credentials, URLs, object names or responses.
+      if(process.env.VERCEL_ENV==="preview"){
+        const x=e as {statusCode?:unknown;code?:unknown;name?:unknown;cause?:unknown};
+        const safeToken=(s:unknown)=>typeof s==="string"&&/^[A-Za-z][A-Za-z0-9_]{0,50}$/.test(s)?s:"unavailable";
+        const status=typeof x?.statusCode==="number"&&x.statusCode>=100&&x.statusCode<=599?x.statusCode:null;
+        console.warn("AI_ROOM_OCI_LIST_FAILURE",JSON.stringify({status,name:safeToken(x?.name),code:safeToken(x?.code),hasCause:Boolean(x?.cause)}));
+      }
+      return nativeError(e);
+    }finally{c.close();}
   }
   async delete(key:string):Promise<void>{
     const c=client();
