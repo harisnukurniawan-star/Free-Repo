@@ -113,53 +113,6 @@ export class NativeObjectStore {
       const contents=(r.listObjects.objects||[]).map(o=>({Key:o.name,LastModified:o.timeModified}));
       return {Contents:contents,KeyCount:contents.length,IsTruncated:Boolean(r.listObjects.nextStartWith)};
     }catch(e){
-      // Preview-only diagnosis: no raw messages, URLs, object keys or credential material.
-      if(process.env.VERCEL_ENV==="preview"){
-        const x=e as {statusCode?:unknown;code?:unknown;name?:unknown;message?:unknown;cause?:unknown;errno?:unknown;syscall?:unknown};
-        const msg=typeof x?.message==="string"?x.message:"";
-        const code=typeof x?.code==="string"?x.code:"";
-        const safeCode=/^[A-Za-z_][A-Za-z0-9_.:-]{0,63}$/.test(code)?code:"unavailable";
-        const category=/notauthenticated|invalidsignature|signaturedoesnotmatch|unauthorized|\b401\b/i.test(msg)?"authentication":
-          /forbidden|notauthorized|\b403\b/i.test(msg)?"authorization":
-          /enotfound|eai_again|getaddrinfo|dns/i.test(msg)?"dns":
-          /timed?out|etimedout|econnreset|econnrefused|socket|network|fetch failed|connect/i.test(msg)?"network":
-          /tls|ssl|certificate|x509/i.test(msg)?"tls":
-          /no private key|invalid pem|bad decrypt|passphrase|private key format/i.test(msg)?"key-parse":
-          /endpoint|region|hostname/i.test(msg)?"endpoint":"unknown";
-        const safelyKnownWords=new Set([
-          "signature","signing","auth","authentication","credentials","provider","private","invalid","denied",
-          "network","fetch","failed","failure","timeout","timed","out","connection","connect","reset",
-          "dns","dnslookup","enotfound","econnreset","socket","socketerror","certificate","ssl","tls",
-          "openssl","digest","unsupported","pem","key","rsa","passphrase","incorrect","password",
-          "request","response","http","https","url","hostname","endpoint","region","code","status",
-          "notfound","unauthorized","forbidden","notauthenticated","badrequest","no","name","undefined",
-          "get","put","list","head","objects","objectstorage","retry","err","error","expected",
-          "value","argument","type","configuration","wrong","format","date","clock","skew",
-          "body","version","module","decrypt","invalidsignature"
-        ]);
-        const matchedWords=Array.from(new Set((msg.match(/[A-Za-z]{3,}/g)||[])
-          .map(word=>word.toLowerCase()).filter(word=>safelyKnownWords.has(word)))).slice(0,24);
-        const codeShape=typeof x?.code==="number"?"number":
-          typeof x?.code==="string"?"string":x?.code===null?"null":"other";
-        const codeAsNumber=typeof x?.code==="number"&&Number.isSafeInteger(x.code)?x.code:null;
-        let reachability:"untested"|"responded"|"network_failure"="untested";
-        let reachabilityStatus:number|null=null;
-        try {
-          const ping=await fetch("https://objectstorage.ap-batam-1.oraclecloud.com/",{
-            method:"HEAD",cache:"no-store",signal:AbortSignal.timeout(3500)
-          });
-          reachability="responded";
-          reachabilityStatus=ping.status;
-          await ping.body?.cancel();
-        } catch {reachability="network_failure";}
-        console.warn("AI_ROOM_OCI_LIST_FAILURE",JSON.stringify({
-          status:typeof x?.statusCode==="number"?x.statusCode:null,
-          code:safeCode,category,
-          errorKind:e instanceof Error?"error":"object",
-          messageLength:msg.length, matchedWords, codeShape, codeAsNumber, reachability, reachabilityStatus,
-          hasCause:Boolean(x?.cause),hasErrno:Boolean(x?.errno),hasSyscall:Boolean(x?.syscall)
-        }));
-      }
       return nativeError(e);
     }finally{c.close();}
   }
