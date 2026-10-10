@@ -9,7 +9,7 @@ import {nativeCredentialsConfigured} from "@/lib/ai-room-native-objects";
 function auditPrivatePreviewConfiguration(){
   if(process.env.VERCEL_ENV!=="preview")return;
   const e=process.env;
-  const pem=(e.AI_ROOM_OCI_PRIVATE_KEY||"").replace(/\\\\n/g,"\\n");
+  const pem=(e.AI_ROOM_OCI_PRIVATE_KEY||"").replace(/\\n/g,"\n");
   console.warn("AI_ROOM_PREVIEW_CONFIG_CHECK",JSON.stringify({
     sessionSecretValid:Boolean(e.AI_ROOM_SESSION_SECRET&&e.AI_ROOM_SESSION_SECRET.length>=32),
     privacyVerified:e.AI_ROOM_OCI_BUCKET_PRIVACY_VERIFIED==="true",
@@ -17,8 +17,8 @@ function auditPrivatePreviewConfiguration(){
     namespacePresent:Boolean(e.AI_ROOM_OCI_NAMESPACE),
     bucketPresent:Boolean(e.AI_ROOM_OCI_BUCKET),
     nativeDriver:e.AI_ROOM_OCI_DRIVER==="native",
-    tenancyIdFormatValid:/^ocid1\\.tenancy\\./.test(e.AI_ROOM_OCI_TENANCY_ID||""),
-    userIdFormatValid:/^ocid1\\.user\\./.test(e.AI_ROOM_OCI_USER_ID||""),
+    tenancyIdFormatValid:/^ocid1\.tenancy\./.test(e.AI_ROOM_OCI_TENANCY_ID||""),
+    userIdFormatValid:/^ocid1\.user\./.test(e.AI_ROOM_OCI_USER_ID||""),
     fingerprintFormatValid:/^[0-9a-f]{2}(?::[0-9a-f]{2}){15}$/i.test(e.AI_ROOM_OCI_KEY_FINGERPRINT||""),
     privateKeyHeaderValid:pem.includes("BEGIN RSA PRIVATE KEY")||pem.includes("BEGIN PRIVATE KEY"),
     nativeCredentialsValid:nativeCredentialsConfigured(),
