@@ -6,7 +6,7 @@ Target: region `ap-batam-1`, private Standard bucket `ai-room-private-videos`, o
 ## 1. Create/check the bucket in OCI (Cloud Shell)
 
 Open the OCI Console in the Batam region and launch authenticated Cloud Shell.
-Use a dedicated OCI compartment for AI ROOM storage. With the repository checked out on the `integration/ai-room-private-mature` branch, run:
+Use a dedicated OCI compartment for AI ROOM storage. With the repository checked out on the security preview branch, run:
 
 ```bash
 export OCI_COMPARTMENT_ID="ocid1.compartment.oc1..your-compartment-id"
@@ -15,7 +15,7 @@ bash scripts/oci-private-bucket-prepare.sh
 
 This script creates the bucket if absent and verifies: correct compartment, private (`NoPublicAccess`), Standard and versioning Disabled. If a bucket already exists, it **does not modify** it. The script stops if the compartment differs, versioning is enabled, or public access is enabled. Keep Object Storage's default encryption.
 
-The script prints the OCI namespace; it does **not** generate or reveal a Customer Secret Key. Never paste credentials into source code, PRs or chat.
+The script also rejects lifecycle expiry and replication; a failed read never triggers bucket creation. It prints the OCI namespace; it does **not** generate or reveal a Customer Secret Key. Never paste credentials into source code, PRs or chat.
 
 ## 2. Create a dedicated app principal / customer secret key
 
@@ -27,12 +27,13 @@ OCI's S3-compatible API uses a regional namespace endpoint; code in this reposit
 
 ## 3. Configure Vercel Preview only
 
-Vercel project: `ai-room`, team `ai-team-chat`. Under **Settings → Environment Variables**, add these keys for **Preview only**, ideally scoped to branch `integration/ai-room-private-mature`:
+Vercel project: `ai-room`, team `ai-team-chat`. Under **Settings → Environment Variables**, add these keys for **Preview only**, ideally scoped to the reviewed security preview branch:
 
 | Variable | Value / purpose |
 | --- | --- |
 | `AI_ROOM_OCI_NAMESPACE` | Namespace returned by the OCI Cloud Shell script |
 | `AI_ROOM_OCI_BUCKET` | `ai-room-private-videos` |
+| `AI_ROOM_OCI_BUCKET_PRIVACY_VERIFIED` | `false` until **both** the bucket preflight and disposable S3 probe pass; then explicitly set `true` in Preview only |
 | `AI_ROOM_OCI_ACCESS_KEY_ID` | Dedicated Customer Secret Key access key |
 | `AI_ROOM_OCI_SECRET_ACCESS_KEY` | Dedicated Customer Secret Key secret |
 | `AI_ROOM_SESSION_SECRET` | Random 32+ byte secret (generate securely and store only in Vercel) |
@@ -43,7 +44,7 @@ Vercel project: `ai-room`, team `ai-team-chat`. Under **Settings → Environment
 
 Do not change Production variables. Vercel Preview deployment must be rebuilt after variables change. Production continues in legacy `browser` mode.
 
-**Important:** `AI_ROOM_STORAGE_MODE=oci` switches the entire AI ROOM preview UI into the private-account version. An invalid bucket key or malformed `AI_ROOM_USERS_JSON` will fail closed.
+**Important:** `AI_ROOM_STORAGE_MODE=oci` switches the entire AI ROOM preview UI into the private-account version. An invalid bucket key, malformed `AI_ROOM_USERS_JSON`, or missing privacy-verification flag will fail closed.
 
 ## 4. Run the isolated storage preflight
 
@@ -72,7 +73,7 @@ First, keep mature mode disabled. If preview private mode breaks, set `AI_ROOM_S
 ### Verification log
 
 - GitHub build / unit tests: run under PR CI
-- OCI bucket exists / privately configured: **not yet verified**
+- OCI bucket exists / privately configured: **not yet verified** (privacy verification flag must remain false)
 - OCI signed upload, anonymous denial, delete: **not yet verified**
 - End-to-end private video: **not yet verified**
 
