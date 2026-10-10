@@ -10,10 +10,10 @@ const tenancyOCID=process.env.AI_ROOM_OCI_TENANCY_ID||"";
 const userOCID=process.env.AI_ROOM_OCI_USER_ID||"";
 const fp=process.env.AI_ROOM_OCI_KEY_FINGERPRINT||"";
 console.log("OCI_BUILD_PROBE_OCID_FORMAT",JSON.stringify({
-  tenancyWhitespace:/\\s/.test(tenancyOCID),userWhitespace:/\\s/.test(userOCID),
-  fingerprintWhitespace:/\\s/.test(fp),
-  tenancyControls:/[\\x00-\\x1f\\x7f]/.test(tenancyOCID),
-  userControls:/[\\x00-\\x1f\\x7f]/.test(userOCID),
+  tenancyWhitespace:/\s/.test(tenancyOCID),userWhitespace:/\s/.test(userOCID),
+  fingerprintWhitespace:/\s/.test(fp),
+  tenancyControls:/[\x00-\x1f\x7f]/.test(tenancyOCID),
+  userControls:/[\x00-\x1f\x7f]/.test(userOCID),
   tenancyHasQuotes:/["']/.test(tenancyOCID),
   userHasQuotes:/["']/.test(userOCID),
   tenancyHasPrefix:tenancyOCID.startsWith("ocid1.tenancy."),
