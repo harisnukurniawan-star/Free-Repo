@@ -18,10 +18,20 @@ const tagged = (e) => {
     "wrong","format","skew","get","list","objects","fetcherror","syntax","parse"];
   const lower = msg.toLowerCase();
   const tags = allowed.filter(w => new RegExp("\\b"+w+"\\b","i").test(lower));
+  // First line only, with hard redaction before logging. Never disclose IDs, PEM, auth headers or opaque tokens.
+  const firstLine=msg.split(/\r?\n/)[0].slice(0,210);
+  const redacted=firstLine
+    .replace(/ocid1\.[^\s"'<>]+/gi,"[OCID]")
+    .replace(/https?:\/\/[^\s"'<>]+/gi,"[URL]")
+    .replace(/(?:Authorization|Bearer|Signature version|private.key|-----BEGIN)[^\r\n]*/gi,"[SECRET]")
+    .replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g,"[EMAIL]")
+    .replace(/[A-Za-z0-9_+\/=-]{24,}/g,"[OPAQUE]")
+    .replace(/[0-9a-f]{2}(?::[0-9a-f]{2}){15}/gi,"[FINGERPRINT]");
+  const noSensitiveTokens=!/(?:-----BEGIN|ocid1\.|Authorization:|Signature version|PRIVATE KEY)/i.test(redacted);
   return {kind:e instanceof Error?"Error":typeof e,status:typeof e?.statusCode==="number"?e.statusCode:null,
     codeType:typeof rawCode,codeNumber:typeof rawCode==="number"?rawCode:null,
     codeLength:typeof rawCode==="string"?rawCode.length:0,
-    msgLength:msg.length,tags,hasCause:Boolean(e?.cause)};
+    msgLength:msg.length,tags,safeFirstLine:noSensitiveTokens?redacted:"[REDACTED]",hasCause:Boolean(e?.cause)};
 };
 try {
   const res = await fetch("https://objectstorage.ap-batam-1.oraclecloud.com/",{
