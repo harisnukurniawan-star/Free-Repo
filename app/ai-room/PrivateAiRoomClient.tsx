@@ -9,6 +9,7 @@ type PrivateJob={
   id:string;prompt:string;model:string;mode:string;duration:string;aspect:string;quality:string;
   status:"queued"|"processing"|"completed"|"failed";createdAt:string;
   videoUrl?:string;downloadUrl?:string;videoWidth?:number;videoHeight?:number;error?:string;
+  contentMode?:"standard"|"mature";
 };
 type Screen="generate"|"gallery"|"history"|"usage";
 async function asJson(response:Response):Promise<Record<string,unknown>>{
@@ -29,6 +30,9 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
   const [view,setView]=useState<Screen>("generate");
   const [jobs,setJobs]=useState<PrivateJob[]>([]);
   const [mode,setMode]=useState<"text"|"image">("text");
+  const [contentMode,setContentMode]=useState<"standard"|"mature">("standard");
+  const [matureEligible,setMatureEligible]=useState(false);
+  const [adultConfirmed,setAdultConfirmed]=useState(false);
   const [prompt,setPrompt]=useState("");
   const [model,setModel]=useState<WanModel>("Wan 2.2 Fast");
   const [duration,setDuration]=useState<WanDuration>("5s");
@@ -49,7 +53,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
     void (async()=>{
       try{
         const data=await asJson(await fetch("/api/ai-room/session",{cache:"no-store"}));
-        if(active && data.authenticated===true && typeof data.user==="string")setUser(data.user);
+        if(active && data.authenticated===true && typeof data.user==="string"){setUser(data.user);setMatureEligible(data.matureEligible===true);}
       }catch(e){if(active)setError(e instanceof Error?e.message:"Could not check private session");}
       finally{if(active)setChecking(false);}
     })();
@@ -91,7 +95,8 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
         body:JSON.stringify({user:loginName,password})
       }));
       if(typeof data.user!=="string")throw new Error("Invalid session");
-      setUser(data.user);setPassword("");
+      setUser(data.user);setPassword("");setMatureEligible(data.matureEligible===true);
+      setContentMode("standard");setAdultConfirmed(false);
     }catch(e){setError(e instanceof Error?e.message:"Login failed");}
     finally{setBusy(false);}
   }
@@ -99,6 +104,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
     try{
       await asJson(await fetch("/api/ai-room/session",{method:"DELETE"}));
       setUser(null);setJobs([]);setOpenJob(null);setReference("");setPrompt("");setError("");
+      setMatureEligible(false);setContentMode("standard");setAdultConfirmed(false);
     }catch(e){setError(e instanceof Error?e.message:"Sign-out failed");}
   }
   function imageChanged(file?:File){
@@ -119,7 +125,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
     if(!(WAN_CATALOG[value].qualities as readonly string[]).includes(quality))setQuality("720p");
   }
   const estimate=useMemo(()=>estimateWanCostUsd({model,mode,duration,quality}),[model,mode,duration,quality]);
-  const canGenerate=ready&&Boolean(user)&&!busy&&prompt.trim().length>=3&&(mode==="text"||Boolean(reference))&&estimate!==null;
+  const canGenerate=ready&&Boolean(user)&&!busy&&prompt.trim().length>=3&&(mode==="text"||Boolean(reference))&&estimate!==null&&(contentMode==="standard"||(matureEligible&&adultConfirmed&&mode==="text"));
   async function generate(){
     if(!canGenerate)return;
     setBusy(true);setError("");
@@ -127,7 +133,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
       const imageUrl=mode==="image"?await frameReferenceImage(reference,ratio):undefined;
       const result=await asJson(await fetch("/api/ai-room/generate",{
         method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({prompt:prompt.trim(),mode,model,duration,aspect:ratio,quality,preserveFace:mode==="image"&&preserveFace,imageUrl})
+        body:JSON.stringify({prompt:prompt.trim(),mode,model,duration,aspect:ratio,quality,preserveFace:mode==="image"&&preserveFace,imageUrl,contentMode,adultConfirmed:contentMode==="mature"&&adultConfirmed})
       }));
       setJobs(current=>[result.job as PrivateJob,...current]);
       setPrompt("");
@@ -177,8 +183,18 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
         </div>
         {view==="generate"&&<div className="studio-grid">
           <section className="composer card">
+            <div className="content-mode-toggle" role="group" aria-label="Content category">
+              <button type="button" className={contentMode==="standard"?"active":""} aria-pressed={contentMode==="standard"} onClick={()=>{setContentMode("standard");setAdultConfirmed(false);}}>Standard</button>
+              <button type="button" className={contentMode==="mature"?"active":""} aria-pressed={contentMode==="mature"} disabled={!matureEligible} onClick={()=>{setContentMode("mature");setMode("text");setAdultConfirmed(false);}}>Mature 18+</button>
+            </div>
+            {contentMode==="mature"&&<div className="mature-mode-notice">
+              <strong>Mature 18+ · non-explicit</strong>
+              <p>Adult romance, sensual atmosphere, and cinematic storytelling only. No nudity, explicit acts, sexualized minors, or non-consensual intimate material. Text-to-video only.</p>
+              <label className="mature-confirm"><input type="checkbox" checked={adultConfirmed} onChange={e=>setAdultConfirmed(e.target.checked)}/><span>I confirm that I am at least 18 years old, the depicted people are consenting adults, and I have permission to use the content.</span></label>
+              <small>Eligibility is controlled by your account operator. The model provider can still reject prompts under its own policies. Output remains in your private OCI gallery.</small>
+            </div>}
             <div className="tabs"><button className={mode==="text"?"active":""} onClick={()=>setMode("text")}>Text → Video</button>
-              <button className={mode==="image"?"active":""} onClick={()=>setMode("image")}>Image → Video</button></div>
+              <button disabled={contentMode==="mature"} className={mode==="image"?"active":""} onClick={()=>setMode("image")}>Image → Video</button></div>
             {mode==="image"&&<div>
               <label className="drop"><input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>{imageChanged(e.target.files?.[0]);e.currentTarget.value="";}}/>
                 {reference?<><img className="reference-preview" src={reference} alt="Reference photo"/><b>{referenceName}</b></>:<><b>＋ Add reference image</b><span>JPG / PNG / WEBP · max 2.5 MB</span></>}</label>
@@ -213,7 +229,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
           <div className={view==="gallery"?"gallery-grid":""}>{(view==="generate"?visible.slice(0,8):visible).map(job=>
             <article className={view==="gallery"?"gallery-item":"job"} key={job.id}>
               {job.videoUrl&&view==="gallery"?<video src={job.videoUrl} controls playsInline style={{aspectRatio:aspectValue(job.aspect)}}/>:<div className="thumb">✦</div>}
-              <div><strong>{job.prompt}</strong><span>{job.model} · {job.duration} · {job.aspect} · {job.status}</span>
+              <div><strong>{job.prompt}</strong><span>{job.model} · {job.duration} · {job.aspect} · {job.status}{job.contentMode==="mature"?" · Mature 18+ non-explicit":""}</span>
                 {job.error&&<div className="error-banner">{job.error}</div>}
                 <div className="result-actions">
                   {job.status==="completed"&&<a href={"/api/ai-room/videos/"+encodeURIComponent(job.id)+"/download"}>Download / Backup</a>}
