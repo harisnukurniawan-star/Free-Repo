@@ -47,22 +47,41 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
   const pollingActive=useRef(false);
   // An in-flight response from tester_a must never populate tester_b\'s browser state.
   const activeUserRef=useRef<string|null>(null);
+  const sessionEpoch=useRef(0);
+  const gallerySequence=useRef(0);
+  const galleryRequests=useRef(new Set<AbortController>());
+  const invalidateSession=useCallback(()=>{
+    sessionEpoch.current+=1;
+    gallerySequence.current+=1;
+    for(const request of galleryRequests.current)request.abort();
+    galleryRequests.current.clear();
+  },[]);
 
   const loadJobs=useCallback(async(owner:string)=>{
     if(activeUserRef.current!==owner)return;
+    const epoch=sessionEpoch.current;
+    const sequence=++gallerySequence.current;
+    const request=new AbortController();
+    galleryRequests.current.add(request);
     setJobsLoadState(previous=>previous==="ready"?"ready":"loading");
     try{
-      const result=await asJson(await fetch("/api/ai-room/jobs",{cache:"no-store"}));
-      if(activeUserRef.current!==owner)return;
+      const result=await asJson(await fetch("/api/ai-room/jobs",{
+        cache:"no-store",signal:request.signal
+      }));
+      if(activeUserRef.current!==owner || epoch!==sessionEpoch.current ||
+        sequence!==gallerySequence.current)return;
       if(!Array.isArray(result.jobs))throw new Error("Invalid private Gallery response.");
       setJobs(result.jobs as PrivateJob[]);
       setJobsLoadState("ready");
       setJobsLoadError("");
     }catch(e){
-      if(activeUserRef.current!==owner)return;
+      if(request.signal.aborted || activeUserRef.current!==owner ||
+        epoch!==sessionEpoch.current || sequence!==gallerySequence.current)return;
       setJobsLoadState("error");
       setJobsLoadError(e instanceof Error?e.message:"Unable to load private videos.");
       throw e;
+    }finally{
+      galleryRequests.current.delete(request);
     }
   },[]);
   useEffect(()=>{
@@ -70,12 +89,13 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
     void (async()=>{
       try{
         const data=await asJson(await fetch("/api/ai-room/session",{cache:"no-store"}));
-        if(active && data.authenticated===true && typeof data.user==="string"){activeUserRef.current=data.user;setUser(data.user);setMatureEligible(data.matureEligible===true);}
+        if(active && data.authenticated===true && typeof data.user==="string"){invalidateSession();activeUserRef.current=data.user;setUser(data.user);setMatureEligible(data.matureEligible===true);}
       }catch(e){if(active)setError(e instanceof Error?e.message:"Could not check private session");}
       finally{if(active)setChecking(false);}
     })();
     return()=>{active=false;};
-  },[]);
+  },[invalidateSession]);
+  useEffect(()=>()=>invalidateSession(),[invalidateSession]);
   useEffect(()=>{
     if(!user)return;
     const initial=window.setTimeout(()=>{void loadJobs(user).catch(()=>{});},0);
@@ -87,16 +107,20 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
     if(!user || !jobs.some(j=>j.status==="queued" || j.status==="processing"))return;
     const timer=window.setInterval(()=>{
       if(pollingActive.current)return;
+      const epoch=sessionEpoch.current;
       pollingActive.current=true;
       const pending=jobs.filter(j=>j.status==="queued"||j.status==="processing");
       void (async()=>{
         try {for(const job of pending){
+          if(epoch!==sessionEpoch.current)break;
           try{
             const result=await asJson(await fetch("/api/ai-room/generate/"+encodeURIComponent(job.id),{cache:"no-store"}));
+            if(epoch!==sessionEpoch.current)break;
             const update=result.job as PrivateJob;
             setJobs(current=>current.map(row=>row.id===job.id?update:row));
           }catch(e){
-            setError(e instanceof Error?e.message:"Status temporarily unavailable; job was not resubmitted");
+            if(epoch===sessionEpoch.current)
+              setError(e instanceof Error?e.message:"Status temporarily unavailable; job was not resubmitted");
           }
         }}finally{pollingActive.current=false;}
       })();
@@ -112,6 +136,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
         body:JSON.stringify({user:loginName,password})
       }));
       if(typeof data.user!=="string")throw new Error("Invalid session");
+      invalidateSession();
       activeUserRef.current=data.user;
       setUser(data.user);setPassword("");setMatureEligible(data.matureEligible===true);
       setJobs([]);setJobsLoadState("loading");setJobsLoadError("");
@@ -122,8 +147,9 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
   async function logout(){
     try{
       await asJson(await fetch("/api/ai-room/session",{method:"DELETE"}));
+      invalidateSession();
       activeUserRef.current=null;
-      setUser(null);setJobs([]);setJobsLoadState("idle");setJobsLoadError("");setOpenJob(null);setReference("");setPrompt("");setError("");
+      setUser(null);setBusy(false);setJobs([]);setJobsLoadState("idle");setJobsLoadError("");setOpenJob(null);setReference("");setPrompt("");setError("");
       setMatureEligible(false);setContentMode("standard");setAdultConfirmed(false);
     }catch(e){setError(e instanceof Error?e.message:"Sign-out failed");}
   }
@@ -133,9 +159,10 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
     if(!["image/jpeg","image/png","image/webp"].includes(file.type) || file.size>2_500_000){
       setError("Use a JPG, PNG or WEBP reference no larger than 2.5 MB.");return;
     }
+    const epoch=sessionEpoch.current;
     const reader=new FileReader();
-    reader.onload=()=>{if(typeof reader.result==="string"){setReference(reader.result);setReferenceName(file.name);}};
-    reader.onerror=()=>setError("Could not read reference photo");
+    reader.onload=()=>{if(epoch===sessionEpoch.current && typeof reader.result==="string"){setReference(reader.result);setReferenceName(file.name);}};
+    reader.onerror=()=>{if(epoch===sessionEpoch.current)setError("Could not read reference photo");};
     reader.readAsDataURL(file);
   }
   function pickModel(value:string){
@@ -148,6 +175,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
   const canGenerate=ready&&Boolean(user)&&jobsLoadState==="ready"&&!busy&&prompt.trim().length>=3&&(mode==="text"||Boolean(reference))&&estimate!==null&&(contentMode==="standard"||(matureEligible&&adultConfirmed&&mode==="text"));
   async function generate(){
     if(!canGenerate)return;
+    const epoch=sessionEpoch.current;
     setBusy(true);setError("");
     try{
       const imageUrl=mode==="image"?await frameReferenceImage(reference,ratio):undefined;
@@ -155,20 +183,25 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({prompt:prompt.trim(),mode,model,duration,aspect:ratio,quality,preserveFace:mode==="image"&&preserveFace,imageUrl,contentMode,adultConfirmed:contentMode==="mature"&&adultConfirmed})
       }));
+      if(epoch!==sessionEpoch.current)return;
       setJobs(current=>[result.job as PrivateJob,...current]);
       setPrompt("");
-    }catch(e){setError(e instanceof Error?e.message:"Generate failed. Check Gallery before retrying.");}
-    finally{setBusy(false);}
+    }catch(e){
+      if(epoch===sessionEpoch.current)setError(e instanceof Error?e.message:"Generate failed. Check Gallery before retrying.");
+    }finally{if(epoch===sessionEpoch.current)setBusy(false);}
   }
   async function deleteJob(job:PrivateJob){
     if(!window.confirm("Permanently delete this video from private OCI storage? This cannot be undone."))return;
+    const epoch=sessionEpoch.current;
     setBusy(true);setError("");
     try{
       await asJson(await fetch("/api/ai-room/generate/"+encodeURIComponent(job.id),{method:"DELETE"}));
+      if(epoch!==sessionEpoch.current)return;
       setJobs(current=>current.filter(item=>item.id!==job.id));
       setOpenJob(current=>current?.id===job.id?null:current);
-    }catch(e){setError(e instanceof Error?e.message:"Delete failed; retry safely");}
-    finally{setBusy(false);}
+    }catch(e){
+      if(epoch===sessionEpoch.current)setError(e instanceof Error?e.message:"Delete failed; retry safely");
+    }finally{if(epoch===sessionEpoch.current)setBusy(false);}
   }
   const completed=jobs.filter(j=>j.status==="completed");
   const latest=completed[0];
