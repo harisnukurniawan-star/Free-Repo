@@ -9,6 +9,7 @@ console.log("OCI_BUILD_PROBE_START");
 const tenancyOCID=process.env.AI_ROOM_OCI_TENANCY_ID||"";
 const userOCID=process.env.AI_ROOM_OCI_USER_ID||"";
 const fp=process.env.AI_ROOM_OCI_KEY_FINGERPRINT||"";
+const canonicalOcid = value => (value||"").replace(/[\s\u0000-\u001f\u007f-\u009f\u200b-\u200d\ufeff]/g,"");
 console.log("OCI_BUILD_PROBE_OCID_FORMAT",JSON.stringify({
   tenancyWhitespace:/\s/.test(tenancyOCID),userWhitespace:/\s/.test(userOCID),
   fingerprintWhitespace:/\s/.test(fp),
@@ -57,7 +58,7 @@ try {
   const common = await import("oci-common");
   const os = await import("oci-objectstorage");
   const p = new common.SimpleAuthenticationDetailsProvider(
-    process.env.AI_ROOM_OCI_TENANCY_ID,process.env.AI_ROOM_OCI_USER_ID,
+    canonicalOcid(process.env.AI_ROOM_OCI_TENANCY_ID),canonicalOcid(process.env.AI_ROOM_OCI_USER_ID),
     process.env.AI_ROOM_OCI_KEY_FINGERPRINT,
     (process.env.AI_ROOM_OCI_PRIVATE_KEY||"").replace(/\\\\n/g,"\n"),
     process.env.AI_ROOM_OCI_KEY_PASSPHRASE||null,
@@ -101,7 +102,7 @@ try {
   const signing=createSign("RSA-SHA256");
   signing.update(message,"utf8");
   const signed=signing.sign(pk,"base64");
-  const keyId=[process.env.AI_ROOM_OCI_TENANCY_ID,process.env.AI_ROOM_OCI_USER_ID,process.env.AI_ROOM_OCI_KEY_FINGERPRINT].join("/");
+  const keyId=[canonicalOcid(process.env.AI_ROOM_OCI_TENANCY_ID),canonicalOcid(process.env.AI_ROOM_OCI_USER_ID),process.env.AI_ROOM_OCI_KEY_FINGERPRINT].join("/");
   const auth='Signature version="1",keyId="'+keyId+'",algorithm="rsa-sha256",headers="(request-target) host x-date",signature="'+signed+'"';
   const res=await fetch(url,{method:"GET",headers:{Authorization:auth,"x-date":xdate,host},signal:AbortSignal.timeout(9000),cache:"no-store"});
   console.log("OCI_BUILD_PROBE_RAW_SIGNED_LIST",JSON.stringify({ok:res.ok,status:res.status}));
