@@ -29,6 +29,8 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
   const [error,setError]=useState("");
   const [view,setView]=useState<Screen>("generate");
   const [jobs,setJobs]=useState<PrivateJob[]>([]);
+  const [jobsLoadState,setJobsLoadState]=useState<"idle"|"loading"|"ready"|"error">("idle");
+  const [jobsLoadError,setJobsLoadError]=useState("");
   const [mode,setMode]=useState<"text"|"image">("text");
   const [contentMode,setContentMode]=useState<"standard"|"mature">("standard");
   const [matureEligible,setMatureEligible]=useState(false);
@@ -45,8 +47,18 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
   const pollingActive=useRef(false);
 
   const loadJobs=useCallback(async()=>{
-    const result=await asJson(await fetch("/api/ai-room/jobs",{cache:"no-store"}));
-    if(Array.isArray(result.jobs))setJobs(result.jobs as PrivateJob[]);
+    setJobsLoadState(previous=>previous==="ready"?"ready":"loading");
+    try{
+      const result=await asJson(await fetch("/api/ai-room/jobs",{cache:"no-store"}));
+      if(!Array.isArray(result.jobs))throw new Error("Invalid private Gallery response.");
+      setJobs(result.jobs as PrivateJob[]);
+      setJobsLoadState("ready");
+      setJobsLoadError("");
+    }catch(e){
+      setJobsLoadState("error");
+      setJobsLoadError(e instanceof Error?e.message:"Unable to load private videos.");
+      throw e;
+    }
   },[]);
   useEffect(()=>{
     let active=true;
@@ -61,7 +73,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
   },[]);
   useEffect(()=>{
     if(!user)return;
-    const initial=window.setTimeout(()=>{void loadJobs().catch(e=>setError(e instanceof Error?e.message:"Could not load videos"));},0);
+    const initial=window.setTimeout(()=>{void loadJobs().catch(()=>{});},0);
     // Refresh short-lived signed preview links; no raw provider URLs are saved locally.
     const refresh=window.setInterval(()=>{void loadJobs().catch(()=>{});},4*60*1000);
     return()=>{window.clearTimeout(initial);window.clearInterval(refresh);};
@@ -96,6 +108,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
       }));
       if(typeof data.user!=="string")throw new Error("Invalid session");
       setUser(data.user);setPassword("");setMatureEligible(data.matureEligible===true);
+      setJobs([]);setJobsLoadState("loading");setJobsLoadError("");
       setContentMode("standard");setAdultConfirmed(false);
     }catch(e){setError(e instanceof Error?e.message:"Login failed");}
     finally{setBusy(false);}
@@ -103,7 +116,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
   async function logout(){
     try{
       await asJson(await fetch("/api/ai-room/session",{method:"DELETE"}));
-      setUser(null);setJobs([]);setOpenJob(null);setReference("");setPrompt("");setError("");
+      setUser(null);setJobs([]);setJobsLoadState("idle");setJobsLoadError("");setOpenJob(null);setReference("");setPrompt("");setError("");
       setMatureEligible(false);setContentMode("standard");setAdultConfirmed(false);
     }catch(e){setError(e instanceof Error?e.message:"Sign-out failed");}
   }
@@ -220,12 +233,14 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
           </aside>
         </div>}
         {view==="usage"&&<section className="queue card"><h2>Usage</h2>
-          <p>{jobs.length} saved jobs · {completed.length} completed. Cost estimates are not billing statements.</p>
+          <p>{jobsLoadState==="ready"?`${jobs.length} saved jobs · ${completed.length} completed.`:"Video inventory is not available until storage responds successfully."} Cost estimates are not billing statements.</p>
           <p>Videos remain in OCI until you delete them. Your daily generation limit is configured by the operator.</p>
         </section>}
         {(view==="gallery"||view==="history"||view==="generate")&&<section className="queue card">
-          <div className="section-head"><div><span className="kicker">PRIVATE STORAGE</span><h2>{view==="gallery"?"Completed videos":view==="history"?"Generation history":"Recent generations"}</h2></div><span>{visible.length} jobs</span></div>
-          {visible.length===0?<div className="empty">No saved videos here yet.</div>:
+          <div className="section-head"><div><span className="kicker">PRIVATE STORAGE</span><h2>{view==="gallery"?"Completed videos":view==="history"?"Generation history":"Recent generations"}</h2></div><span>{jobsLoadState==="ready"?visible.length+" jobs":jobsLoadState==="error"?"Unavailable":"Loading…"}</span></div>
+          {jobsLoadState==="error"?<div className="error-banner" role="alert">Unable to load your private videos: {jobsLoadError}. Your saved videos have not been deleted. <button type="button" onClick={()=>{void loadJobs().catch(()=>{});}}>Retry loading</button></div>:
+          jobsLoadState!=="ready"?<div className="empty" role="status">Loading private videos from OCI…</div>:
+          visible.length===0?<div className="empty">No saved videos here yet.</div>:
           <div className={view==="gallery"?"gallery-grid":""}>{(view==="generate"?visible.slice(0,8):visible).map(job=>
             <article className={view==="gallery"?"gallery-item":"job"} key={job.id}>
               {job.videoUrl&&view==="gallery"?<video src={job.videoUrl} controls playsInline style={{aspectRatio:aspectValue(job.aspect)}}/>:<div className="thumb">✦</div>}
