@@ -4,7 +4,7 @@ import {Readable} from "node:stream";
 import {
   NativeObjectStore,nativeCredentialsConfigured,nativeObjectName,privateVideoPath
 } from "../lib/ai-room-native-objects";
-import {privateReadNative} from "../lib/ai-room-private-storage";
+import {privateDelete,privateReadNative} from "../lib/ai-room-private-storage";
 import {makeSession,SESSION_COOKIE} from "../lib/ai-room-private-auth";
 import {VideoEngineError} from "../lib/video-engine";
 
@@ -162,4 +162,64 @@ test("Gallery API reports OCI failure instead of pretending the bucket is empty"
   const result=await res.json();
   assert.equal(Array.isArray(result.jobs),false);
   assert.equal(typeof result.error,"string");
+});
+
+test("deletion tombstones prevent resurrection and cross-owner deletion",async t=>{
+  fixture(t);
+  const aliceJob="jobs/alice/"+id+".json";
+  const aliceVideo="videos/alice/"+id+".mp4";
+  const tombstone="deleted/alice/"+id+".json";
+  const prior={id,owner:"alice",status:"completed",prompt:"private clip",
+    model:"Wan 2.2 Fast",mode:"text",quality:"720p",duration:"5s",
+    aspect:"16:9",createdAt:"2026-10-10T00:00:00Z"};
+  const objects=new Map<string,string|Buffer>([
+    [aliceJob,JSON.stringify(prior)],[aliceVideo,Buffer.from("0123456789")]
+  ]);
+  const proto=NativeObjectStore.prototype;
+  const previous={head:proto.head,getText:proto.getText,put:proto.put,delete:proto.delete,getVideo:proto.getVideo};
+  const missing=()=>{const error=new Error("Not Found");error.name="NotFound";return error;};
+  const deletedKeys:string[]=[];
+  proto.head=async key=>{
+    const value=objects.get(key);
+    if(value===undefined)throw missing();
+    return {ContentLength:Buffer.byteLength(value)};
+  };
+  proto.getText=async key=>{
+    const value=objects.get(key);
+    if(value===undefined)throw missing();
+    return value.toString();
+  };
+  proto.put=async(key,body)=>{
+    if(typeof body!=="string" && !Buffer.isBuffer(body))throw Error("Unexpected fixture body");
+    objects.set(key,body);
+  };
+  proto.delete=async key=>{deletedKeys.push(key);objects.delete(key);};
+  proto.getVideo=async key=>{
+    const value=objects.get(key);
+    if(value===undefined)throw missing();
+    const bytes=Buffer.from(value);
+    return {body:Readable.from([bytes]),length:bytes.length};
+  };
+  t.after(()=>{
+    proto.head=previous.head;proto.getText=previous.getText;proto.put=previous.put;
+    proto.delete=previous.delete;proto.getVideo=previous.getVideo;
+  });
+
+  await assert.rejects(()=>privateDelete("bobby",id),
+    (error:unknown)=>error instanceof VideoEngineError&&error.httpStatus===404);
+  assert.equal(objects.has(tombstone),false,"another owner cannot create Alice's tombstone");
+  assert.equal(objects.has(aliceVideo),true,"another owner cannot delete Alice's bytes");
+
+  await privateDelete("alice",id);
+  assert.equal(objects.has(tombstone),true,"permanent deletion marker must be written");
+  assert.equal(objects.has(aliceVideo),false,"video bytes must be removed");
+  assert.deepEqual(deletedKeys,[aliceVideo]);
+  await assert.rejects(()=>privateReadNative("alice",id,null),
+    (error:unknown)=>error instanceof VideoEngineError&&error.httpStatus===404);
+
+  // A racing status request may rewrite metadata, but cannot clear the tombstone.
+  objects.set(aliceJob,JSON.stringify(prior));
+  await assert.rejects(()=>privateReadNative("alice",id,"bytes=0-3"),
+    (error:unknown)=>error instanceof VideoEngineError&&error.httpStatus===404);
+  assert.equal(objects.has(aliceVideo),false);
 });
