@@ -7,7 +7,7 @@ import {VideoEngineError} from "../lib/video-engine";
 
 function environment(t:import("node:test").TestContext){
   const keys=["AI_ROOM_STORAGE_MODE","AI_ROOM_SESSION_SECRET","AI_ROOM_USERS_JSON",
-    "AI_ROOM_OCI_NAMESPACE","AI_ROOM_OCI_BUCKET","AI_ROOM_OCI_ACCESS_KEY_ID","AI_ROOM_OCI_SECRET_ACCESS_KEY"];
+    "AI_ROOM_OCI_NAMESPACE","AI_ROOM_OCI_BUCKET","AI_ROOM_OCI_ACCESS_KEY_ID","AI_ROOM_OCI_SECRET_ACCESS_KEY","AI_ROOM_OCI_BUCKET_PRIVACY_VERIFIED"];
   const previous=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
   t.after(()=>{for(const key of keys){const v=previous[key];if(v===undefined)delete process.env[key];else process.env[key]=v;}});
   const salt="aa".repeat(16);
@@ -21,6 +21,7 @@ function environment(t:import("node:test").TestContext){
   process.env.AI_ROOM_OCI_BUCKET="ai-room-private-videos";
   process.env.AI_ROOM_OCI_ACCESS_KEY_ID="fake-key";
   process.env.AI_ROOM_OCI_SECRET_ACCESS_KEY="fake-secret";
+  process.env.AI_ROOM_OCI_BUCKET_PRIVACY_VERIFIED="true";
 }
 test("OCI private video mode is opt-in",t=>{
   const old=process.env.AI_ROOM_STORAGE_MODE;t.after(()=>{if(old===undefined)delete process.env.AI_ROOM_STORAGE_MODE;else process.env.AI_ROOM_STORAGE_MODE=old;});
