@@ -1,6 +1,7 @@
 import "server-only";
 import {Readable} from "node:stream";
 import {ReadableStream as NodeReadableStream} from "node:stream/web";
+import {createHash,createPrivateKey,createPublicKey} from "node:crypto";
 import * as common from "oci-common";
 import * as objectstorage from "oci-objectstorage";
 import {VideoEngineError} from "./video-engine";
@@ -108,6 +109,17 @@ export class NativeObjectStore {
         const x=e as {statusCode?:unknown;code?:unknown;name?:unknown;cause?:unknown};
         const safeToken=(s:unknown)=>typeof s==="string"&&/^[A-Za-z][A-Za-z0-9_]{0,50}$/.test(s)?s:"unavailable";
         const status=typeof x?.statusCode==="number"&&x.statusCode>=100&&x.statusCode<=599?x.statusCode:null;
+        const pem=(process.env.AI_ROOM_OCI_PRIVATE_KEY||"").replace(/\\n/g,"\n");
+        let keyParsable=false,fingerprintMatchesKey:null|boolean=null,keyRsa=false;
+        try {
+          const pk=createPrivateKey({key:pem,format:"pem",passphrase:process.env.AI_ROOM_OCI_KEY_PASSPHRASE||undefined});
+          keyParsable=true;
+          keyRsa=pk.asymmetricKeyType==="rsa";
+          const pub=createPublicKey(pk).export({format:"der",type:"spki"});
+          const derived=createHash("md5").update(pub).digest("hex").match(/../g)?.join(":");
+          fingerprintMatchesKey=Boolean(derived&&derived.toLowerCase()===(process.env.AI_ROOM_OCI_KEY_FINGERPRINT||"").toLowerCase());
+        }catch {}
+        const keyDiagnostic={keyParsable,keyRsa,fingerprintMatchesKey,hasPemFooter:pem.includes("END PRIVATE KEY"),hasPemNewlines:pem.includes("\n"),passphraseProvided:Boolean(process.env.AI_ROOM_OCI_KEY_PASSPHRASE)};
         const ownKeys=e!==null && typeof e==="object"?Object.keys(e).filter(k=>/^(?:statusCode|status|httpStatus|code|name|message|cause|errno|syscall|errorCode|error|response|request)$/.test(k)):[];
         const description=(()=>{try{return String(typeof x==="object"&&x!==null&&"message" in x?x.message:"")}catch{return ""}})();
         const category=/NotAuthenticated|401|InvalidSignature|SignatureDoesNotMatch/i.test(description)?"authentication":
@@ -115,7 +127,7 @@ export class NativeObjectStore {
           /ETIMEDOUT|Timeout|ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|network|socket|fetch failed/i.test(description)?"network":
           /SSL|TLS|certificate/i.test(description)?"tls":
           /PRIVATE KEY|key|PEM|decrypt|passphrase/i.test(description)?"signing-key": "unclassified";
-        console.warn("AI_ROOM_OCI_LIST_FAILURE",JSON.stringify({status,name:safeToken(x?.name),code:safeToken(x?.code),category,ownKeys,wasError:e instanceof Error,hasCause:Boolean(x?.cause)}));
+        console.warn("AI_ROOM_OCI_LIST_FAILURE",JSON.stringify({status,name:safeToken(x?.name),code:safeToken(x?.code),numericCode:typeof x?.code==="number"?x.code:null,category,ownKeys,wasError:e instanceof Error,hasCause:Boolean(x?.cause),...keyDiagnostic}));
       }
       return nativeError(e);
     }finally{c.close();}
