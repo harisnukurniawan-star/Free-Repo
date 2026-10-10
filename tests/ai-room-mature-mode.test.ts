@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {contentPolicyRejection, matureContentModeEnabled} from "../lib/ai-room-content-policy";
+import {contentPolicyRejection, matureContentModeEnabled, matureAccountEligible} from "../lib/ai-room-content-policy";
 import {parseVideoRequest, VideoEngineError} from "../lib/video-engine";
 
 const safePrompt="Two consenting adult partners slow dance in a cinematic candlelit restaurant";
@@ -11,7 +11,14 @@ const example=(extra:Record<string,unknown>={})=>({
 
 function setMatureFlag(t:test.TestContext, value?:string) {
   const before=process.env.AI_ROOM_ENABLE_MATURE_MODE;
-  t.after(()=>{if(before===undefined)delete process.env.AI_ROOM_ENABLE_MATURE_MODE;else process.env.AI_ROOM_ENABLE_MATURE_MODE=before});
+  const priorStorage=process.env.AI_ROOM_STORAGE_MODE;
+  const priorUsers=process.env.AI_ROOM_MATURE_USER_ALLOWLIST;
+  t.after(()=>{
+    if(before===undefined)delete process.env.AI_ROOM_ENABLE_MATURE_MODE;else process.env.AI_ROOM_ENABLE_MATURE_MODE=before;
+    if(priorStorage===undefined)delete process.env.AI_ROOM_STORAGE_MODE;else process.env.AI_ROOM_STORAGE_MODE=priorStorage;
+    if(priorUsers===undefined)delete process.env.AI_ROOM_MATURE_USER_ALLOWLIST;else process.env.AI_ROOM_MATURE_USER_ALLOWLIST=priorUsers;
+  });
+  process.env.AI_ROOM_STORAGE_MODE="oci";
   if(value===undefined)delete process.env.AI_ROOM_ENABLE_MATURE_MODE;
   else process.env.AI_ROOM_ENABLE_MATURE_MODE=value;
 }
@@ -103,4 +110,28 @@ test("common Indonesian disallowed prompts are blocked in both content modes",()
     assert.throws(()=>parseVideoRequest(example({prompt})),/cannot be generated/i);
   }
   assert.equal(contentPolicyRejection("Sepasang orang dewasa menari romantis di restoran"),null);
+});
+
+test("Mature never becomes available in shared-key browser mode",t=>{
+  setMatureFlag(t,"true");
+  process.env.AI_ROOM_STORAGE_MODE="browser";
+  process.env.AI_ROOM_MATURE_USER_ALLOWLIST="owner_a";
+  assert.equal(matureContentModeEnabled(),false);
+  assert.equal(matureAccountEligible("owner_a"),false);
+  assert.throws(()=>parseVideoRequest(example({contentMode:"mature",adultConfirmed:true})),
+    (error:unknown)=>error instanceof VideoEngineError&&error.httpStatus===403);
+});
+
+test("Mature account authorization requires explicit operator allowlist",t=>{
+  setMatureFlag(t,"true");
+  delete process.env.AI_ROOM_MATURE_USER_ALLOWLIST;
+  assert.equal(matureAccountEligible("owner_a"),false);
+  process.env.AI_ROOM_MATURE_USER_ALLOWLIST="owner_a,owner_b";
+  assert.equal(matureAccountEligible("owner_a"),true);
+  assert.equal(matureAccountEligible("owner_b"),true);
+  for(const id of ["owner_c","admin","../owner_a","owner_a/../owner_b",""]){
+    assert.equal(matureAccountEligible(id),false);
+  }
+  process.env.AI_ROOM_ENABLE_MATURE_MODE="false";
+  assert.equal(matureAccountEligible("owner_a"),false);
 });
