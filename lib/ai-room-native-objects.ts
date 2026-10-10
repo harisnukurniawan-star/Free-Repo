@@ -20,8 +20,8 @@ export function nativeCredentialsConfigured():boolean {
   const tenancy=normalizeOciId(process.env.AI_ROOM_OCI_TENANCY_ID||"");
   const user=normalizeOciId(process.env.AI_ROOM_OCI_USER_ID||"");
   return Boolean(
-    /^ocid1\.tenancy\.oc1\.[A-Za-z0-9._-]{12,}$/.test(tenancy) &&
-    /^ocid1\.user\.oc1\.[A-Za-z0-9._-]{12,}$/.test(user) &&
+    /^ocid1\.tenancy\.oc1\.[A-Za-z0-9._-]{8,}$/.test(tenancy) &&
+    /^ocid1\.user\.oc1\.[A-Za-z0-9._-]{8,}$/.test(user) &&
     /^[0-9a-f]{2}(?::[0-9a-f]{2}){15}$/i.test(process.env.AI_ROOM_OCI_KEY_FINGERPRINT||"") &&
     (key.includes("BEGIN RSA PRIVATE KEY") || key.includes("BEGIN PRIVATE KEY"))
   );
