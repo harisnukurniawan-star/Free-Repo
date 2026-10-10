@@ -10,11 +10,18 @@ import {VideoEngineError} from "./video-engine";
 export function nativeStorageEnabled():boolean {
   return process.env.AI_ROOM_OCI_DRIVER === "native";
 }
+// OCI identifiers never contain whitespace/control characters; Vercel values
+// pasted with a trailing newline would otherwise poison the signed Authorization header.
+export function normalizeOciId(value:string):string {
+  return value.replace(/[\s\u0000-\u001f\u007f-\u009f\u200b-\u200d\ufeff]/g,"");
+}
 export function nativeCredentialsConfigured():boolean {
   const key=(process.env.AI_ROOM_OCI_PRIVATE_KEY||"").replace(/\\n/g,"\n");
+  const tenancy=normalizeOciId(process.env.AI_ROOM_OCI_TENANCY_ID||"");
+  const user=normalizeOciId(process.env.AI_ROOM_OCI_USER_ID||"");
   return Boolean(
-    /^ocid1\.tenancy\./.test(process.env.AI_ROOM_OCI_TENANCY_ID||"") &&
-    /^ocid1\.user\./.test(process.env.AI_ROOM_OCI_USER_ID||"") &&
+    /^ocid1\.tenancy\.oc1\.[A-Za-z0-9._-]{12,}$/.test(tenancy) &&
+    /^ocid1\.user\.oc1\.[A-Za-z0-9._-]{12,}$/.test(user) &&
     /^[0-9a-f]{2}(?::[0-9a-f]{2}){15}$/i.test(process.env.AI_ROOM_OCI_KEY_FINGERPRINT||"") &&
     (key.includes("BEGIN RSA PRIVATE KEY") || key.includes("BEGIN PRIVATE KEY"))
   );
@@ -31,8 +38,8 @@ export function privateVideoPath(id:string):string {
 function provider(){
   if(!nativeCredentialsConfigured())throw new VideoEngineError("Native OCI API key is not configured.",503,false);
   return new common.SimpleAuthenticationDetailsProvider(
-    process.env.AI_ROOM_OCI_TENANCY_ID!,
-    process.env.AI_ROOM_OCI_USER_ID!,
+    normalizeOciId(process.env.AI_ROOM_OCI_TENANCY_ID!),
+    normalizeOciId(process.env.AI_ROOM_OCI_USER_ID!),
     process.env.AI_ROOM_OCI_KEY_FINGERPRINT!,
     process.env.AI_ROOM_OCI_PRIVATE_KEY!.replace(/\\n/g,"\n"),
     process.env.AI_ROOM_OCI_KEY_PASSPHRASE||null,
