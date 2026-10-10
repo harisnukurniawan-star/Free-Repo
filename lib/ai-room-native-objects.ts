@@ -108,7 +108,14 @@ export class NativeObjectStore {
         const x=e as {statusCode?:unknown;code?:unknown;name?:unknown;cause?:unknown};
         const safeToken=(s:unknown)=>typeof s==="string"&&/^[A-Za-z][A-Za-z0-9_]{0,50}$/.test(s)?s:"unavailable";
         const status=typeof x?.statusCode==="number"&&x.statusCode>=100&&x.statusCode<=599?x.statusCode:null;
-        console.warn("AI_ROOM_OCI_LIST_FAILURE",JSON.stringify({status,name:safeToken(x?.name),code:safeToken(x?.code),hasCause:Boolean(x?.cause)}));
+        const ownKeys=e!==null && typeof e==="object"?Object.keys(e).filter(k=>/^(?:statusCode|status|httpStatus|code|name|message|cause|errno|syscall|errorCode|error|response|request)$/.test(k)):[];
+        const description=(()=>{try{return String(typeof x==="object"&&x!==null&&"message" in x?x.message:"")}catch{return ""}})();
+        const category=/NotAuthenticated|401|InvalidSignature|SignatureDoesNotMatch/i.test(description)?"authentication":
+          /Unauthorized|NotAuthorized|403|Forbidden/i.test(description)?"authorization":
+          /ETIMEDOUT|Timeout|ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|network|socket|fetch failed/i.test(description)?"network":
+          /SSL|TLS|certificate/i.test(description)?"tls":
+          /PRIVATE KEY|key|PEM|decrypt|passphrase/i.test(description)?"signing-key": "unclassified";
+        console.warn("AI_ROOM_OCI_LIST_FAILURE",JSON.stringify({status,name:safeToken(x?.name),code:safeToken(x?.code),category,ownKeys,wasError:e instanceof Error,hasCause:Boolean(x?.cause)}));
       }
       return nativeError(e);
     }finally{c.close();}
