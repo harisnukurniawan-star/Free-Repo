@@ -85,7 +85,9 @@ export function classifyNativeFailure(error:unknown):{status:number|null;categor
 }
 export function nativeError(error:unknown,operation:"head"|"get"|"put"|"list"|"delete"|"stream"="get"):never {
   const failure=classifyNativeFailure(error);
-  if(failure.category==="not_found"){
+  // An absent individual object is normal; a 404 when listing means the
+  // bucket, namespace or route is wrong and must never look like an empty gallery.
+  if(failure.category==="not_found" && (operation==="head" || operation==="get" || operation==="stream")){
     const notFound=new Error("Native OCI object missing");notFound.name="NotFound";throw notFound;
   }
   // Only fixed labels and numeric HTTP statuses. Never log the SDK error object:
