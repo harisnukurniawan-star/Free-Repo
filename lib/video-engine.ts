@@ -25,6 +25,7 @@ export type VideoJob = {
   videoUrl?: string;
   videoWidth?: number;
   videoHeight?: number;
+  error?: string;
 };
 export interface VideoEngine {
   name: string;
@@ -123,7 +124,21 @@ function parseJobId(id: string) {
   return { endpoint: ENDPOINTS[tier as Tier][mode], requestId };
 }
 
-function providerHttpError(status: number): VideoEngineError {
+/** Report a safe failure category without revealing raw provider responses. */
+function providerFailureReason(result: unknown): string {
+  if (result && typeof result === "object" && !Array.isArray(result)) {
+    const fields = result as Record<string, unknown>;
+    const code = typeof fields.error_type === "string" ? fields.error_type :
+      typeof fields.code === "string" ? fields.code : "";
+    if (/moderation|policy|safety/i.test(code))
+      return "The provider blocked this request under its content policy.";
+    if (/validation|invalid_input|invalid_parameter/i.test(code))
+      return "The provider rejected a model setting or invalid input.";
+  }
+  return "The provider reported a failed generation without a specific reason.";
+}
+
+function providerHttpError(status: number, detail?: unknown): VideoEngineError {
   if (status === 401 || status === 403) {
     return new VideoEngineError("Video provider authentication failed. Check the server configuration.", 503, false);
   }
@@ -134,7 +149,9 @@ function providerHttpError(status: number): VideoEngineError {
   if (status === 408 || status === 504) return new VideoEngineError("Video provider timed out. Please try again shortly.", 504, true);
   if (status >= 500) return new VideoEngineError("Video provider is temporarily unavailable.", 502, true);
   if (status === 400 || status === 422) {
-    return new VideoEngineError("Video generation failed. The provider rejected the request.", 422, false);
+    return new VideoEngineError(detail === undefined
+      ? "The provider rejected this request (HTTP " + status + "). Review the prompt and model settings."
+      : providerFailureReason(detail), 422, false);
   }
   return new VideoEngineError("Video provider could not process this request.", 502, false);
 }
@@ -190,7 +207,17 @@ class FalWanEngine implements VideoEngine {
         try {
           signal.throwIfAborted();
           const response = await fetch(url, { ...init, signal, cache: "no-store" });
-          if (!response.ok) throw providerHttpError(response.status);
+          if (!response.ok) {
+            let details: unknown;
+            if ((response.status === 400 || response.status === 422) &&
+                response.headers.get("content-type")?.includes("application/json")) {
+              try {
+                const raw = await response.clone().text();
+                if (raw.length <= 4096) details = JSON.parse(raw) as unknown;
+              } catch { /* Provider did not supply readable error details. */ }
+            }
+            throw providerHttpError(response.status, details);
+          }
           return response;
         } catch (error) {
           controller.abort();
@@ -266,7 +293,7 @@ class FalWanEngine implements VideoEngine {
       // Current queue responses can include errors on COMPLETED, while older
       // saved requests may report FAILED. Neither is a usable video result.
       if (("error" in state && state.error) || ("error_type" in state && state.error_type) || String(state.status) === "FAILED") {
-        return this.job(id, "failed");
+        return {...this.job(id, "failed"), error: providerFailureReason(state)};
       }
       if (state.status !== "COMPLETED") {
         throw new VideoEngineError("Video provider returned an unknown status. Please try again shortly.", 502, true);

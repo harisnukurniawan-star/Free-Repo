@@ -258,7 +258,7 @@ export async function privateStatus(owner:string,id:string):Promise<ClientJob>{
   if(state.status==="queued" || state.status==="processing"){
     if(record.status!==state.status){record={...record,status:state.status};await putRecord(record);}
   }else if(state.status==="failed"){
-    record={...record,status:"failed",error:"Provider could not generate this video."};
+    record={...record,status:"failed",error:state.error||"Provider could not generate this video."};
     await putRecord(record);
   }else if(state.status==="completed" && state.videoUrl){
     await importVideo(owner,id,state.videoUrl);
