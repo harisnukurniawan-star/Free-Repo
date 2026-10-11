@@ -58,7 +58,15 @@ To create an account's hashed password record securely, follow the non-echoing l
 
 ## 3. Gate test / no paid video generation
 
-From a secure environment with the Production-only signing credentials, run the existing `scripts/verify-oci-native.mjs --probe` using the **Production bucket**. It creates one uniquely named disposable JSON object, checks exact readback/list, anonymous GET denial, and deletion. It is not a video generation request and does not consume fal.ai credits. Capture **only** PASS/FAIL and non-secret diagnostics; ensure the temporary object is gone.
+From a secure operator environment with the **dedicated Production OCI signing credentials** loaded as environment variables (not command-line arguments), run:
+
+```bash
+AI_ROOM_OCI_DRIVER=native node scripts/verify-oci-native.mjs --production-probe
+```
+
+The Production probe refuses a Preview environment or any bucket except `ai-room-private-videos-prod`, and checks the private Standard bucket, signed upload/read/list, anonymous GET denial, and verified deletion of a disposable JSON object. The probe is **not** a video generation request and does not consume fal.ai credits. It does not independently prove that Production's signer differs from Preview; check the user OCID, fingerprint and IAM group through OCI Console before using it. Do not send or paste any PEM/private key into GitHub, browser, CLI arguments, or chat.
+
+Capture **only** PASS/FAIL and non-secret diagnostics; ensure the temporary object is gone. If a write outcome is uncertain, inspect and clean only the dedicated `usage/nativeprobe/` prefix. Keep `AI_ROOM_STORAGE_MODE=browser` until all cutover criteria pass.
 
 Next: verify both accounts can log in to the separate private UI once the cutover is explicitly enabled, and verify each owner sees only their own Gallery. API calls for an unrelated owner's job, stream, download and delete must be denied (404). Verify no raw object names appear in application logs. Test a **preexisting, non-sensitive, authorized** video for playback/download/delete if available; do not submit a new paid generation request merely for this gate.
 
