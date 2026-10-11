@@ -53,6 +53,10 @@ function config(){
   if(!/^[A-Za-z0-9_-]{1,128}$/.test(ns) || !/^[A-Za-z0-9._-]{3,255}$/.test(bucket)){
     throw new VideoEngineError("Invalid OCI native Object Storage configuration.",503,false);
   }
+  // Defense in depth: reject wrong-bucket calls even outside authenticated routes.
+  if(process.env.VERCEL_ENV==="production" && bucket!=="ai-room-private-videos-prod"){
+    throw new VideoEngineError("Native OCI Production bucket is not configured.",503,false);
+  }
   return {namespaceName:ns,bucketName:bucket};
 }
 function client(){
