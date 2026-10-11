@@ -1,4 +1,5 @@
 import {NextResponse} from "next/server";
+import {PIN_COOKIE,pinCookieOptions} from "@/lib/ai-room-generation-pin";
 import {makeSession, privateVideoEnabled, privateVideoConfigured, readSession, requireSameOrigin, sessionCookieOptions, SESSION_COOKIE, verifyPassword} from "@/lib/ai-room-private-auth";
 import {videoEngineError, VideoEngineError} from "@/lib/video-engine";
 import {matureAccountEligible} from "@/lib/ai-room-content-policy";
@@ -39,6 +40,7 @@ export async function DELETE(request:Request){
     requireSameOrigin(request);
     const response=NextResponse.json({authenticated:false},{headers:{"Cache-Control":"no-store"}});
     response.cookies.set(SESSION_COOKIE,"",{...sessionCookieOptions(),maxAge:0});
+    response.cookies.set(PIN_COOKIE,"",{...pinCookieOptions(),maxAge:0});
     return response;
   }catch(error){return errorResponse(error);}
 }
