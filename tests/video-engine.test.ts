@@ -532,3 +532,55 @@ test("completed jobs return true provider video dimensions for ratio verificatio
   assert.equal(result.videoHeight,1920);
   assert.equal(result.status,"completed");
 });
+
+
+test("queue failure preserves safe policy classification, not provider text", async ctx => {
+  useFal(ctx);
+  globalThis.fetch = (async () => json({
+    status: "COMPLETED",
+    request_id: "policy123",
+    error_type: "CONTENT_POLICY",
+    error: "Do not show this raw message",
+  })) as typeof fetch;
+  const result = await getVideoEngine().status("fast:text:policy123");
+  assert.equal(result.status, "failed");
+  assert.match(result.error || "", /provider blocked/i);
+  assert.doesNotMatch(result.error || "", /raw message/i);
+});
+
+test("unknown queue failure avoids a misleading policy diagnosis", async ctx => {
+  useFal(ctx);
+  globalThis.fetch = (async () => json({
+    status: "FAILED", request_id: "unknown123",
+    error: "Unknown model infrastructure issue",
+  })) as typeof fetch;
+  const result = await getVideoEngine().status("fast:text:unknown123");
+  assert.equal(result.status, "failed");
+  assert.match(result.error || "", /without a specific reason/i);
+  assert.doesNotMatch(result.error || "", /blocked/i);
+});
+
+test("provider HTTP 422 error is categorized without replaying paid submit", async ctx => {
+  useFal(ctx);
+  let posts = 0;
+  globalThis.fetch = (async (_input, init) => {
+    if (init?.method === "POST") posts++;
+    return json({error_type: "VALIDATION_ERROR", detail: "Private detail must not appear"}, 422);
+  }) as typeof fetch;
+  await assert.rejects(
+    () => getVideoEngine().submit(parseVideoRequest({
+      prompt: "A cinematic city at sunset",
+      mode: "text", model: "Wan 2.2 Fast", duration: "5s",
+      aspect: "16:9", quality: "720p",
+    })),
+    (err: unknown) => {
+      assert.ok(err instanceof VideoEngineError);
+      assert.equal(err.httpStatus, 422);
+      assert.equal(err.retryable, false);
+      assert.match(err.message, /invalid input/i);
+      assert.doesNotMatch(err.message, /Private detail/i);
+      return true;
+    },
+  );
+  assert.equal(posts, 1);
+});
