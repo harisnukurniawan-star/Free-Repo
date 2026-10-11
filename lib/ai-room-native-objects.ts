@@ -100,6 +100,16 @@ export function nativeError(error:unknown,operation:"head"|"get"|"put"|"list"|"d
   console.warn("AI_ROOM_OCI_NATIVE_FAILURE",JSON.stringify({operation,...failure}));
   throw new VideoEngineError("Private OCI Object Storage operation failed.",503,true);
 }
+/** One bounded retry is safe only for read-only inventory requests, never paid submission or writes. */
+export async function retryTransientOciList<T>(operation:()=>Promise<T>, wait:()=>Promise<void>=()=>new Promise(resolve=>setTimeout(resolve,200))):Promise<T>{
+  try{return await operation();}
+  catch(error){
+    const category=classifyNativeFailure(error).category;
+    if(category!=="rate_limited" && category!=="oci_service" && category!=="network_or_signing")throw error;
+    await wait();
+    return operation();
+  }
+}
 export type NativeListItem={Key?:string;LastModified?:Date};
 export type NativeList={Contents:NativeListItem[];KeyCount:number;IsTruncated:boolean};
 export class NativeObjectStore {
@@ -137,14 +147,18 @@ export class NativeObjectStore {
     }catch(e){if(e instanceof VideoEngineError)throw e;return nativeError(e,"get");}finally{c.close();}
   }
   async list(prefix:string,limit:number):Promise<NativeList>{
-    const c=client();
     try{
-      const r=await withPrivateOciLogs(()=>c.listObjects({...config(),prefix,limit,fields:"name,timeModified"}));
-      const contents=(r.listObjects.objects||[]).map(o=>({Key:o.name,LastModified:o.timeModified}));
-      return {Contents:contents,KeyCount:contents.length,IsTruncated:Boolean(r.listObjects.nextStartWith)};
+      return await retryTransientOciList(async()=>{
+        const c=client();
+        try{
+          const r=await withPrivateOciLogs(()=>c.listObjects({...config(),prefix,limit,fields:"name,timeModified"}));
+          const contents=(r.listObjects.objects||[]).map(o=>({Key:o.name,LastModified:o.timeModified}));
+          return {Contents:contents,KeyCount:contents.length,IsTruncated:Boolean(r.listObjects.nextStartWith)};
+        }finally{c.close();}
+      });
     }catch(e){
       return nativeError(e,"list");
-    }finally{c.close();}
+    }
   }
   async delete(key:string):Promise<void>{
     const c=client();
