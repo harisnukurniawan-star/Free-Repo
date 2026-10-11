@@ -129,7 +129,7 @@ export class NativeObjectStore {
         chunks.push(b);
       }
       return Buffer.concat(chunks).toString("utf8");
-    }catch(e){if(e instanceof VideoEngineError)throw e;return nativeError(e,"get");finally{c.close();}
+    }catch(e){if(e instanceof VideoEngineError)throw e;return nativeError(e,"get");}finally{c.close();}
   }
   async list(prefix:string,limit:number):Promise<NativeList>{
     const c=client();
