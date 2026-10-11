@@ -1,6 +1,13 @@
 #!/usr/bin/env node
-// OCI Native REST signer probe. This uses the same API key as Vercel Preview.
-// Run ONLY in a secure shell; never paste PEM into Git, CLI arguments or chat.
+/**
+ * OCI Native signed-object smoke probe. No fal.ai calls or user object changes.
+ *
+ * --probe: existing Preview or other non-production testing
+ * --production-probe: strictly the dedicated OCI Production bucket + native driver
+ *
+ * Run from a secure operator terminal with environment variables already loaded.
+ * Never pass PEM material in CLI arguments, print SDK errors, or store keys in Git.
+ */
 import {randomUUID} from "node:crypto";
 import {Readable} from "node:stream";
 import {buffer} from "node:stream/consumers";
@@ -8,65 +15,134 @@ import * as common from "oci-common";
 import * as objectstorage from "oci-objectstorage";
 
 const env=process.env;
+const args=process.argv.slice(2);
+const isProduction=args.length===1&&args[0]==="--production-probe";
+const isPreview=args.length===1&&args[0]==="--probe";
 const required=["AI_ROOM_OCI_TENANCY_ID","AI_ROOM_OCI_USER_ID","AI_ROOM_OCI_KEY_FINGERPRINT",
   "AI_ROOM_OCI_PRIVATE_KEY","AI_ROOM_OCI_NAMESPACE","AI_ROOM_OCI_BUCKET"];
-const abort=message=>{console.error("FAIL: "+message);process.exitCode=1;};
-if(process.argv.length!==3 || process.argv[2]!=="--probe"){
-  abort("Pass explicit --probe to test OCI; no objects were changed.");
-}else if(required.some(k=>!env[k])){
-  abort("Missing OCI Native API key or storage configuration.");
-}else{
-  const namespaceName=env.AI_ROOM_OCI_NAMESPACE;
-  const bucketName=env.AI_ROOM_OCI_BUCKET;
-  const provider=new common.SimpleAuthenticationDetailsProvider(
-    env.AI_ROOM_OCI_TENANCY_ID,env.AI_ROOM_OCI_USER_ID,env.AI_ROOM_OCI_KEY_FINGERPRINT,
-    env.AI_ROOM_OCI_PRIVATE_KEY.replace(/\\n/g,"\n"),env.AI_ROOM_OCI_KEY_PASSPHRASE||null,
-    common.Region.AP_BATAM_1);
-  const client=new objectstorage.ObjectStorageClient({authenticationDetailsProvider:provider});
-  client.region=common.Region.AP_BATAM_1;
-  const objectName="usage/nativeprobe/"+new Date().toISOString().slice(0,10)+"/"+randomUUID()+".json";
-  const payload=Buffer.from(JSON.stringify({probe:"ai-room-oci-native",nonce:randomUUID()}));
-  const config={namespaceName,bucketName,objectName};
-  let wrote=false;
-  try{
-    const details=await client.getBucket({namespaceName,bucketName});
-    if(details.bucket.publicAccessType!=="NoPublicAccess" || details.bucket.versioning!=="Disabled" ||
-      details.bucket.storageTier!=="Standard"){
-      throw Error("Bucket privacy, tier or versioning was not as expected");
+const PROD_BUCKET="ai-room-private-videos-prod";
+const PREFIX="usage/nativeprobe/";
+const maxBodyBytes=8*1024;
+function stop(message) {
+  console.error("FAIL: "+message);
+  process.exitCode=1;
+}
+function badConfiguration(){
+  if(!isProduction&&!isPreview)return "Choose --probe or --production-probe. No objects changed.";
+  if(isProduction && env.AI_ROOM_OCI_BUCKET!==PROD_BUCKET)
+    return "Production probe refused a bucket other than the isolated Production bucket.";
+  if(isPreview && env.VERCEL_ENV==="production")
+    return "Use --production-probe in Production; Preview probe refused.";
+  if(isProduction && env.AI_ROOM_OCI_DRIVER!=="native")
+    return "Native OCI driver is required for the Production probe.";
+  if(required.some(k=>!env[k]))
+    return "OCI API signing and bucket configuration are incomplete.";
+  if(!/^[A-Za-z0-9_-]{1,128}$/.test(env.AI_ROOM_OCI_NAMESPACE) ||
+     !/^[A-Za-z0-9._-]{3,255}$/.test(env.AI_ROOM_OCI_BUCKET))
+    return "Unsafe namespace or bucket identifier.";
+  return null;
+}
+const missing=badConfiguration();
+if(missing){stop(missing);}
+else{
+  // The OCI SDK's retry warnings can contain the private object path. Never
+  // echo raw SDK warnings or exceptions from this standalone diagnostic.
+  const warn=console.warn;
+  console.warn=(...args)=>{
+    const first=args[0];
+    if(typeof first==="string" && [
+      "Request cannot be retried. Not Retrying. Exception occurred :",
+      "Request failed with Exception :",
+      "All retry attempts have exhausted."
+    ].some(prefix=>first.startsWith(prefix)))return;
+    warn(...args);
+  };
+  let client;
+  let writeAttempted=false;
+  const objectName=PREFIX+new Date().toISOString().slice(0,10)+"/"+randomUUID()+".json";
+  const payload=Buffer.from(JSON.stringify({probe:"ai-room-private-storage",nonce:randomUUID()}));
+  const params={namespaceName:env.AI_ROOM_OCI_NAMESPACE,
+    bucketName:env.AI_ROOM_OCI_BUCKET,objectName};
+  // Restrict calls to the region selected for this app. SDK retries are
+  // bounded to prevent the verifier hanging on a network/IAM failure.
+  const verify=async(promise,ms=15000)=>{
+    let timer;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise((_,reject)=>{timer=setTimeout(()=>reject({code:"timeout"}),ms);})
+      ]);
+    } finally {clearTimeout(timer);}
+  };
+  try {
+    const signer=new common.SimpleAuthenticationDetailsProvider(
+      env.AI_ROOM_OCI_TENANCY_ID,env.AI_ROOM_OCI_USER_ID,
+      env.AI_ROOM_OCI_KEY_FINGERPRINT,
+      env.AI_ROOM_OCI_PRIVATE_KEY.replace(/\\n/g,"\n"),
+      env.AI_ROOM_OCI_KEY_PASSPHRASE||null,
+      common.Region.AP_BATAM_1
+    );
+    client=new objectstorage.ObjectStorageClient({authenticationDetailsProvider:signer},{
+      retryConfiguration:{terminationStrategy:new common.MaxAttemptsTerminationStrategy(1)}
+    });
+    client.region=common.Region.AP_BATAM_1;
+    const result=await verify(client.getBucket({
+      namespaceName:params.namespaceName,bucketName:params.bucketName
+    }));
+    if(result.bucket?.publicAccessType!=="NoPublicAccess" ||
+       result.bucket?.versioning!=="Disabled" ||
+       result.bucket?.storageTier!=="Standard" ||
+       result.bucket?.replicationEnabled===true ||
+       result.bucket?.isReadOnly===true){
+      throw Error("bucket_policy");
     }
-    console.log("PASS: OCI Native API key can inspect a private Standard bucket.");
-    await client.putObject({...config,putObjectBody:payload,contentLength:payload.length,
-      contentType:"application/json",cacheControl:"private, no-store"});
-    wrote=true;
-    const read=await client.getObject(config);
-    const incoming=Buffer.from(await buffer(Readable.from(read.value)));
-    if(!incoming.equals(payload))throw Error("Readback mismatch");
-    console.log("PASS: Signed OCI Native upload and exact readback.");
-    const objects=await client.listObjects({namespaceName,bucketName,prefix:objectName,limit:10});
-    if(!objects.listObjects.objects?.some(x=>x.name===objectName))throw Error("Object absent from owner-scoped list");
-    console.log("PASS: OCI Native list.");
-    const direct="https://objectstorage.ap-batam-1.oraclecloud.com/n/"+
-      encodeURIComponent(namespaceName)+"/b/"+encodeURIComponent(bucketName)+"/o/"+
-      encodeURIComponent(objectName);
-    const anon=await fetch(direct,{redirect:"manual",signal:AbortSignal.timeout(15000)});
+    console.log("PASS: signed OCI Native access to private Standard bucket.");
+    writeAttempted=true;
+    await verify(client.putObject({...params,putObjectBody:payload,
+      contentLength:payload.length,contentType:"application/json",
+      cacheControl:"private, no-store"}));
+    console.log("PASS: disposable object write.");
+    const response=await verify(client.getObject(params));
+    const data=Buffer.from(await buffer(Readable.from(response.value)));
+    if(data.length>maxBodyBytes||!data.equals(payload))throw Error("readback");
+    console.log("PASS: exact signed readback.");
+    const listing=await verify(client.listObjects({
+      namespaceName:params.namespaceName,bucketName:params.bucketName,
+      prefix:objectName,limit:2,fields:"name"
+    }));
+    if(!listing.listObjects?.objects?.some(obj=>obj.name===objectName))
+      throw Error("list");
+    console.log("PASS: signed list.");
+    const anonymous="https://objectstorage.ap-batam-1.oraclecloud.com/n/"+
+      encodeURIComponent(params.namespaceName)+"/b/"+
+      encodeURIComponent(params.bucketName)+"/o/"+encodeURIComponent(params.objectName);
+    const anon=await fetch(anonymous,{
+      redirect:"manual",signal:AbortSignal.timeout(10000)
+    });
     await anon.body?.cancel();
-    if(![401,403,404].includes(anon.status))throw Error("Anonymous object access not denied");
-    console.log("PASS: Anonymous GET denied.");
-  }catch(error){
-    abort("Native API preflight failed; check permissions and privacy. "+(error?.statusCode||error?.code||""));
-  }finally{
-    if(wrote){
+    if(![401,403,404].includes(anon.status))throw Error("public_object_access");
+    console.log("PASS: anonymous read denied.");
+  } catch {
+    // Raw SDK exceptions can contain private key identifiers and object paths.
+    stop("OCI signed storage probe failed. Check signing, IAM, policy and Batam network.");
+  } finally {
+    // Attempt cleanup even after an uncertain write outcome. This never
+    // deletes any user object: objectName is a new cryptographic UUID.
+    if(client&&writeAttempted){
       try {
-        await client.deleteObject(config);
+        await verify(client.deleteObject(params));
         try{
-          await client.headObject(config);
-          abort("Deleted preflight object was still readable.");
-        }catch(error) {
-          if(error?.statusCode===404 || error?.code==="NotFound")console.log("PASS: Disposable probe deletion verified.");
-          else abort("Could not verify probe deletion.");
+          await verify(client.headObject(params));
+          stop("Disposable object still exists after Delete.");
+        }catch(e){
+          if(e?.statusCode===404 || e?.code==="NotFound")console.log("PASS: disposable object deletion verified.");
+          else stop("Disposable object deletion could not be verified.");
         }
-      }catch{abort("Probe cleanup failed: inspect usage/nativeprobe/ for orphaned object.");}
+      } catch {
+        stop("Disposable object cleanup could not be verified; inspect the nativeprobe prefix in OCI.");
+      }
     }
-    client.close();
+    client?.close();
+    console.warn=warn;
   }
 }
