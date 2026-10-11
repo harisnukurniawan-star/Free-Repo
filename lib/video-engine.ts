@@ -133,16 +133,42 @@ function parseJobId(id: string) {
 
 /** Report a safe failure category without revealing raw provider responses. */
 function providerFailureReason(result: unknown): string {
-  if (result && typeof result === "object" && !Array.isArray(result)) {
-    const fields = result as Record<string, unknown>;
-    const code = typeof fields.error_type === "string" ? fields.error_type :
-      typeof fields.code === "string" ? fields.code : "";
-    if (/moderation|policy|safety/i.test(code))
-      return "The provider blocked this request under its content policy.";
-    if (/validation|invalid_input|invalid_parameter/i.test(code))
-      return "The provider rejected a model setting or invalid input.";
+  // Inspect only known provider error fields and never echo their raw contents.
+  // fal can send errors as strings, typed objects or FastAPI-style detail arrays.
+  const hints: string[] = [];
+  const collect = (value: unknown, depth: number): void => {
+    if (hints.length >= 12 || depth > 3) return;
+    if (typeof value === "string") {
+      hints.push(value.slice(0, 350));
+    } else if (Array.isArray(value)) {
+      for (const item of value.slice(0, 5)) collect(item, depth + 1);
+    } else if (value && typeof value === "object") {
+      const fields = value as Record<string, unknown>;
+      for (const field of ["error_type", "code", "type", "error", "detail", "message", "msg", "errors", "loc"]) {
+        if (field in fields) collect(fields[field], depth + 1);
+      }
+    }
+  };
+  collect(result, 0);
+  const hint = hints.join(" ").toLowerCase();
+
+  if (/(?:moderation|content[_ -]?policy|safety[_ -]?check|nsfw|prohibited[_ -]?content|explicit[_ -]?content)/.test(hint)) {
+    return "The provider blocked this request or reference image under its content safety policy.";
   }
-  return "The provider reported a failed generation without a specific reason.";
+  if (/(?:image|reference|base64|data[_ -]?uri|mime|file[_ -]?type|file[_ -]?format)/.test(hint) &&
+      /(?:invalid|unsupported|malformed|unreadable|too large|decode|failed to load|missing|required|not found)/.test(hint)) {
+    return "The provider could not accept the reference image. Check its format, size and readability.";
+  }
+  if (/(?:validation|invalid[_ -]?input|invalid[_ -]?parameter|schema|unprocessable|unexpected[_ -]?field|value[_ -]?error)/.test(hint)) {
+    return "The provider rejected a model setting or invalid input. Review the selected model, ratio, quality and duration.";
+  }
+  if (/(?:insufficient[_ -]?credit|billing|balance|quota[_ -]?exceeded|payment[_ -]?required)/.test(hint)) {
+    return "The provider reported a credit, billing or quota restriction.";
+  }
+  if (/(?:out[_ -]?of[_ -]?memory|overloaded|internal[_ -]?server|capacity|temporarily unavailable|timeout|timed out)/.test(hint)) {
+    return "The provider failed during processing. Check History before considering another paid generation.";
+  }
+  return "The provider reported a failed generation without a specific reason. Check History before retrying; the provider did not identify a safe failure category.";
 }
 
 function providerHttpError(status: number, detail?: unknown): VideoEngineError {
@@ -300,7 +326,10 @@ class FalWanEngine implements VideoEngine {
       // Current queue responses can include errors on COMPLETED, while older
       // saved requests may report FAILED. Neither is a usable video result.
       if (("error" in state && state.error) || ("error_type" in state && state.error_type) || String(state.status) === "FAILED") {
-        return {...this.job(id, "failed"), error: providerFailureReason(state)};
+        const reason = providerFailureReason(state);
+        // Never record user prompts, reference images, raw provider bodies or request IDs in logs.
+        console.warn("AI_ROOM_FAL_JOB_FAILED", JSON.stringify({ endpoint, category: reason }));
+        return {...this.job(id, "failed"), error: reason};
       }
       if (state.status !== "COMPLETED") {
         throw new VideoEngineError("Video provider returned an unknown status. Please try again shortly.", 502, true);
