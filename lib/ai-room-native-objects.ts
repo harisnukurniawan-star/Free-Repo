@@ -54,15 +54,7 @@ function config(){
   }
   return {namespaceName:ns,bucketName:bucket};
 }
-// OCI SDK default error messages may include private bucket/object names.
-// Disable the SDK's free-form logger and retain only our typed, sanitized
-// AI_ROOM_OCI_NATIVE_FAILURE counters in nativeError().
-const safeOciLogger={
-  level:"error",
-  trace(){},debug(){},info(){},warn(){},error(){}
-};
 function client(){
-  common.LOG.logger=safeOciLogger;
   const c=new objectstorage.ObjectStorageClient({authenticationDetailsProvider:provider()}, {
     // Do not stall interactive Gallery requests with the OCI SDK default 8 retries.
     retryConfiguration:{terminationStrategy:new common.MaxAttemptsTerminationStrategy(1)}
