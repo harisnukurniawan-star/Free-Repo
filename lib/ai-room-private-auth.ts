@@ -1,6 +1,7 @@
 import "server-only";
 import {createHmac, scryptSync, timingSafeEqual} from "node:crypto";
 import {VideoEngineError} from "./video-engine";
+import {nativeStorageEnabled,nativeCredentialsConfigured} from "./ai-room-native-objects";
 
 export const SESSION_COOKIE = "ai_room_session";
 const SESSION_SECONDS = 24 * 60 * 60;
@@ -16,7 +17,8 @@ export function privateVideoConfigured(): boolean {
     process.env.AI_ROOM_OCI_BUCKET_PRIVACY_VERIFIED === "true" &&
     process.env.AI_ROOM_USERS_JSON &&
     process.env.AI_ROOM_OCI_NAMESPACE && process.env.AI_ROOM_OCI_BUCKET &&
-    process.env.AI_ROOM_OCI_ACCESS_KEY_ID && process.env.AI_ROOM_OCI_SECRET_ACCESS_KEY
+    (nativeStorageEnabled()?nativeCredentialsConfigured():
+      (process.env.AI_ROOM_OCI_ACCESS_KEY_ID && process.env.AI_ROOM_OCI_SECRET_ACCESS_KEY))
   );
 }
 function secret(): string {

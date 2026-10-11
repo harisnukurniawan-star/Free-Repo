@@ -6,6 +6,8 @@ import {getSignedUrl} from "@aws-sdk/s3-request-presigner";
 import {getVideoEngine, parseVideoRequest, VideoEngineError, type VideoJob} from "./video-engine";
 import {privateVideoConfigured} from "./ai-room-private-auth";
 import {matureAccountEligible} from "./ai-room-content-policy";
+import {nativeStorageEnabled,privateVideoPath,NativeObjectStore} from "./ai-room-native-objects";
+import {NativeCommandBridge} from "./ai-room-native-bridge";
 
 const REGION="ap-batam-1";
 const JOB_ID=/^(?:fast|a14b|v27|v3|v3prime):(text|image):[A-Za-z0-9_-]{1,128}$/;
@@ -28,7 +30,11 @@ function settings(){
   }
   return {namespace,bucket};
 }
-function client(){
+function client():S3Client{
+  if(nativeStorageEnabled()){
+    settings();
+    return new NativeCommandBridge() as unknown as S3Client;
+  }
   const {namespace}=settings();
   return new S3Client({
     region:REGION,
@@ -113,6 +119,8 @@ async function signedRecord(job:PrivateRecord):Promise<ClientJob>{
   const safe=publicRecord(job);
   await requireNotDeleted(job.owner,job.id);
   if(job.status!=="completed")return safe;
+  if(nativeStorageEnabled())return {...safe,videoUrl:privateVideoPath(job.id),
+    downloadUrl:"/api/ai-room/videos/"+encodeURIComponent(job.id)+"/download"};
   const c=client(),{bucket}=settings();
   try{
     const object=videoKey(job.owner,job.id);
@@ -224,10 +232,14 @@ async function importVideo(owner:string,id:string,source:string):Promise<void>{
       throw new VideoEngineError("Provider returned a non-video file.",502,false);
     }
     await requireNotDeleted(owner,id);
-    await new Upload({client:c,params:{Bucket:bucket,Key:dst,
-      Body:boundedVideoStream(Readable.fromWeb(response.body as import("node:stream/web").ReadableStream),size),
-      ContentType:"video/mp4",ContentLength:size,CacheControl:"private, no-store"},
-      queueSize:2,partSize:8*1024*1024,leavePartsOnError:false}).done();
+    const stream=boundedVideoStream(Readable.fromWeb(response.body as import("node:stream/web").ReadableStream),size);
+    if(nativeStorageEnabled()){
+      await new NativeObjectStore().put(dst,stream,size,"video/mp4");
+    }else{
+      await new Upload({client:c,params:{Bucket:bucket,Key:dst,
+        Body:stream,ContentType:"video/mp4",ContentLength:size,
+        CacheControl:"private, no-store"},queueSize:2,partSize:8*1024*1024,leavePartsOnError:false}).done();
+    }
     if(await wasDeleted(owner,id)){
       await removeVideo(owner,id);
       throw new VideoEngineError("Private video was deleted.",404,false);
@@ -298,4 +310,39 @@ export async function privateDelete(owner:string,id:string):Promise<void>{
       createdAt:record.createdAt,status:"deleted"});
   }
   await removeVideo(owner,id);
+}
+
+/** Signed-cookie, per-owner, streaming video proxy for OCI Native mode.
+ * Never generate a public URL or a pre-authenticated request. */
+export async function privateReadNative(owner:string,id:string,header:string|null):
+  Promise<{stream:Readable;length:number;total:number;start:number;end:number;partial:boolean}>{
+  if(!nativeStorageEnabled())throw new VideoEngineError("Native video playback is not enabled.",404,false);
+  await requireNotDeleted(owner,id);
+  const record=await getRecord(owner,id);
+  if(record.status!=="completed")throw new VideoEngineError("Private video is not ready.",409,true);
+  const storage=new NativeObjectStore();
+  const {ContentLength:total}=await storage.head(videoKey(owner,id));
+  if(!Number.isSafeInteger(total)||total<=0||total>VIDEO_LIMIT) {
+    throw new VideoEngineError("Invalid private video object.",502,false);
+  }
+  let start=0,end=total-1,partial=false;
+  if(header!==null){
+    const match=/^bytes=(0|[1-9][0-9]*)-([0-9]*)$/.exec(header);
+    if(!match)throw new VideoEngineError("Unsupported video range.",416,false);
+    start=Number(match[1]);
+    end=match[2]?Number(match[2]):total-1;
+    if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||end<start||start>=total){
+      throw new VideoEngineError("Video range is outside the object.",416,false);
+    }
+    // Small contiguous responses support video seeking without buffering a huge object.
+    end=Math.min(end,total-1,start+4*1024*1024-1);
+    partial=true;
+  }
+  await requireNotDeleted(owner,id);
+  const {body,length}=await storage.getVideo(videoKey(owner,id),partial?{start,end,total}:undefined);
+  if(length!==end-start+1){
+    body.destroy();
+    throw new VideoEngineError("OCI video returned an unexpected range length.",502,true);
+  }
+  return {stream:body,length,total,start,end,partial};
 }
