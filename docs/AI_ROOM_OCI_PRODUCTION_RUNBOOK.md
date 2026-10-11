@@ -21,7 +21,7 @@ export OCI_COMPARTMENT_ID="<OCI compartment OCID>"
 bash scripts/oci-production-bucket-prepare.sh
 ```
 
-The script prepares **`ai-room-private-videos-prod`** (not Preview's `ai-room-private-videos`), checks `NoPublicAccess`, Standard tier, no versioning, lifecycle deletion or replication, and refuses unsafe existing configuration. Do not set `AI_ROOM_OCI_BUCKET_PRIVACY_VERIFIED=true` merely because the bucket exists.
+The script prepares **`ai-room-private-videos-prod`** (not Preview's `ai-room-private-videos`), checks `NoPublicAccess`, Standard tier, no versioning, lifecycle deletion or replication, and refuses unsafe existing configuration. The application also **enforces this Production bucket name at runtime**, so setting a Preview bucket name cannot silently redirect Production Gallery operations. Do not set `AI_ROOM_OCI_BUCKET_PRIVACY_VERIFIED=true` merely because the bucket exists.
 
 Create a **dedicated Production OCI IAM user and group** with object read/list/write/delete rights restricted to that bucket and, only if required, bucket-inspection rights. A policy pattern, after substituting the *real OCI group and compartment* and reviewing against Oracle IAM guidance:
 
