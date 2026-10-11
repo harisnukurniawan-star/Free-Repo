@@ -33,6 +33,8 @@ function badConfiguration(){
     return "Production probe refused a bucket other than the isolated Production bucket.";
   if(isPreview && env.VERCEL_ENV==="production")
     return "Use --production-probe in Production; Preview probe refused.";
+  if(isProduction && env.VERCEL_ENV==="preview")
+    return "Production probe cannot run with a Preview environment.";
   if(isProduction && env.AI_ROOM_OCI_DRIVER!=="native")
     return "Native OCI driver is required for the Production probe.";
   if(required.some(k=>!env[k]))
@@ -92,6 +94,7 @@ else{
     if(result.bucket?.publicAccessType!=="NoPublicAccess" ||
        result.bucket?.versioning!=="Disabled" ||
        result.bucket?.storageTier!=="Standard" ||
+       Boolean(result.bucket?.objectLifecyclePolicyEtag) ||
        result.bucket?.replicationEnabled===true ||
        result.bucket?.isReadOnly===true){
       throw Error("bucket_policy");
