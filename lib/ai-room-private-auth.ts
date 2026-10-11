@@ -11,11 +11,23 @@ type UserRecord = {id:string;salt:string;passwordHash:string};
 export function privateVideoEnabled(): boolean {
   return process.env.AI_ROOM_STORAGE_MODE === "oci";
 }
+/** Keep Production in browser mode unless an operator has explicitly
+ * signed off a separate native OCI release. Setting storage=oci alone is
+ * not enough to unlock the protected private UI and API. */
+export function productionOciReleaseApproved():boolean {
+  return process.env.VERCEL_ENV!=="production" ||
+    (process.env.AI_ROOM_OCI_PRODUCTION_APPROVED==="true" && nativeStorageEnabled());
+}
+function privateAccountsConfigured():boolean {
+  try { return users().length>0; }
+  catch { return false; }
+}
 export function privateVideoConfigured(): boolean {
   return Boolean(
+    productionOciReleaseApproved() &&
     process.env.AI_ROOM_SESSION_SECRET && process.env.AI_ROOM_SESSION_SECRET.length >= 32 &&
     process.env.AI_ROOM_OCI_BUCKET_PRIVACY_VERIFIED === "true" &&
-    process.env.AI_ROOM_USERS_JSON &&
+    privateAccountsConfigured() &&
     process.env.AI_ROOM_OCI_NAMESPACE && process.env.AI_ROOM_OCI_BUCKET &&
     (nativeStorageEnabled()?nativeCredentialsConfigured():
       (process.env.AI_ROOM_OCI_ACCESS_KEY_ID && process.env.AI_ROOM_OCI_SECRET_ACCESS_KEY))
