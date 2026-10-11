@@ -9,6 +9,7 @@ import {
 } from "../lib/ai-room-native-objects";
 import {privateDelete,privateReadNative} from "../lib/ai-room-private-storage";
 import {VideoEngineError} from "../lib/video-engine";
+import {isOciSdkRetryWarning,withPrivateOciLogs} from "../lib/ai-room-oci-safe-logger";
 
 const id="fast:text:nativevideo_001";
 const vars=[
@@ -332,4 +333,33 @@ test("missing OCI bucket on list never masquerades as an absent video object",()
     assert.throws(()=>nativeError({statusCode:404,code:"NotFound"},"head"),(e:unknown)=>
       e instanceof Error && e.name==="NotFound");
   }finally{console.warn=warn;}
+});
+
+
+test("SDK retry log guard hides only scoped OCI retry warnings and preserves unrelated logs",async()=>{
+  assert.equal(isOciSdkRetryWarning(["Request cannot be retried. Not Retrying. Exception occurred : owner key"]),true);
+  assert.equal(isOciSdkRetryWarning(["All retry attempts have exhausted. owner key"]),true);
+  assert.equal(isOciSdkRetryWarning(["Request failed with Exception : owner key"]),true);
+  assert.equal(isOciSdkRetryWarning(["AI_ROOM_OCI_NATIVE_FAILURE"]),false);
+  const originalWarn=console.warn;
+  const lines:string[]=[];
+  console.warn=(...args:unknown[])=>{lines.push(args.map(String).join(" "));};
+  try{
+    await withPrivateOciLogs(async()=>{
+      await Promise.resolve();
+      console.warn("Request cannot be retried. Not Retrying. Exception occurred : jobs/alice/secret.json");
+      console.warn("All retry attempts have exhausted. jobs/alice/secret.json");
+      console.warn("Request failed with Exception : jobs/alice/secret.json");
+      console.warn("AI_ROOM_OCI_NATIVE_FAILURE",JSON.stringify({operation:"list",category:"auth_or_policy"}));
+    });
+    console.warn("Outside-OCI warning");
+    console.warn("Request cannot be retried. Not Retrying. Exception occurred : unrelated");
+    assert.equal(lines.length,3);
+    assert.match(lines[0],/AI_ROOM_OCI_NATIVE_FAILURE/);
+    assert.match(lines[1],/Outside-OCI warning/);
+    assert.match(lines[2],/unrelated/);
+    assert.ok(lines.every(line=>!line.includes("jobs/alice/secret.json")));
+  }finally{
+    console.warn=originalWarn;
+  }
 });
