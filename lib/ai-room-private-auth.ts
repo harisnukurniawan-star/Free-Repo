@@ -11,12 +11,15 @@ type UserRecord = {id:string;salt:string;passwordHash:string};
 export function privateVideoEnabled(): boolean {
   return process.env.AI_ROOM_STORAGE_MODE === "oci";
 }
-/** Keep Production in browser mode unless an operator has explicitly
- * signed off a separate native OCI release. Setting storage=oci alone is
- * not enough to unlock the protected private UI and API. */
+/** Fail closed if Production is accidentally pointed at the Preview bucket.
+ * Namespace may be shared by an OCI tenancy; bucket and signing identity must
+ * remain separated, and the signer must be provisioned independently. */
+export const PRODUCTION_OCI_BUCKET="ai-room-private-videos-prod";
 export function productionOciReleaseApproved():boolean {
   return process.env.VERCEL_ENV!=="production" ||
-    (process.env.AI_ROOM_OCI_PRODUCTION_APPROVED==="true" && nativeStorageEnabled());
+    (process.env.AI_ROOM_OCI_PRODUCTION_APPROVED==="true" &&
+      nativeStorageEnabled() &&
+      process.env.AI_ROOM_OCI_BUCKET===PRODUCTION_OCI_BUCKET);
 }
 function privateAccountsConfigured():boolean {
   try { return users().length>0; }
