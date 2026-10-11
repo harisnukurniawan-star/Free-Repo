@@ -57,5 +57,5 @@ print("Bucket privacy preflight PASS. Retain these settings until production cut
 echo "Region: $REGION"
 echo "OCI namespace: $NAMESPACE"
 echo "Bucket: $BUCKET"
-echo "Next: configure a dedicated least-privilege Customer Secret Key in Vercel Preview."
+echo "Next: use a dedicated OCI Native API signing key with least-privilege Object Storage access (not a Customer Secret Key)."
 echo "After an authenticated disposable upload/read/delete probe succeeds, set AI_ROOM_OCI_BUCKET_PRIVACY_VERIFIED=true only in the tested environment."

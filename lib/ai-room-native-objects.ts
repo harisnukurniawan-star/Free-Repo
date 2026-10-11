@@ -4,6 +4,7 @@ import {ReadableStream as NodeReadableStream} from "node:stream/web";
 import * as common from "oci-common";
 import * as objectstorage from "oci-objectstorage";
 import {VideoEngineError} from "./video-engine";
+import {withPrivateOciLogs} from "./ai-room-oci-safe-logger";
 
 // Native OCI SDK avoids S3 designated-compartment tenancy configuration entirely.
 // All methods use the fixed Batam region, one bucket, and OCI request-signing API keys.
@@ -101,7 +102,7 @@ export class NativeObjectStore {
   async head(key:string):Promise<{ContentLength:number}> {
     const c=client();
     try{
-      const r=await c.headObject({...config(),objectName:nativeObjectName(key)});
+      const r=await withPrivateOciLogs(()=>c.headObject({...config(),objectName:nativeObjectName(key)}));
       return {ContentLength:r.contentLength};
     }catch(e){return nativeError(e,"head");}finally{c.close();}
   }
@@ -113,14 +114,14 @@ export class NativeObjectStore {
       c.close();throw new VideoEngineError("Invalid OCI object size.",502,false);
     }
     try{
-      await c.putObject({...config(),objectName:nativeObjectName(key),
-        putObjectBody:b,contentLength,contentType:type,cacheControl:"private, no-store"});
+      await withPrivateOciLogs(()=>c.putObject({...config(),objectName:nativeObjectName(key),
+        putObjectBody:b,contentLength,contentType:type,cacheControl:"private, no-store"}));
     }catch(e){return nativeError(e,"put");}finally{c.close();}
   }
   async getText(key:string):Promise<string>{
     const c=client();
     try{
-      const r=await c.getObject({...config(),objectName:nativeObjectName(key)});
+      const r=await withPrivateOciLogs(()=>c.getObject({...config(),objectName:nativeObjectName(key)}));
       const s=Readable.from(r.value as Readable|NodeReadableStream);
       const chunks:Buffer[]=[];let size=0;
       for await(const chunk of s){
@@ -134,7 +135,7 @@ export class NativeObjectStore {
   async list(prefix:string,limit:number):Promise<NativeList>{
     const c=client();
     try{
-      const r=await c.listObjects({...config(),prefix,limit,fields:"name,timeModified"});
+      const r=await withPrivateOciLogs(()=>c.listObjects({...config(),prefix,limit,fields:"name,timeModified"}));
       const contents=(r.listObjects.objects||[]).map(o=>({Key:o.name,LastModified:o.timeModified}));
       return {Contents:contents,KeyCount:contents.length,IsTruncated:Boolean(r.listObjects.nextStartWith)};
     }catch(e){
@@ -143,7 +144,7 @@ export class NativeObjectStore {
   }
   async delete(key:string):Promise<void>{
     const c=client();
-    try{await c.deleteObject({...config(),objectName:nativeObjectName(key)});}
+    try{await withPrivateOciLogs(()=>c.deleteObject({...config(),objectName:nativeObjectName(key)}));}
     catch(e){return nativeError(e,"delete");}finally{c.close();}
   }
   async getVideo(key:string,range?:{start:number;end:number;total:number}):Promise<{body:Readable;length:number}>{
@@ -151,7 +152,7 @@ export class NativeObjectStore {
     try{
       const request:objectstorage.requests.GetObjectRequest={...config(),objectName:nativeObjectName(key)};
       if(range)request.range=common.Range.parse(range.start+"-"+range.end+"/"+range.total);
-      const res=await c.getObject(request);
+      const res=await withPrivateOciLogs(()=>c.getObject(request));
       // OCI returns the response as a readable stream. Keep the SDK client until the stream ends.
       const body=res.value instanceof Readable?res.value:Readable.fromWeb(res.value as NodeReadableStream);
       body.once("close",()=>c.close());
