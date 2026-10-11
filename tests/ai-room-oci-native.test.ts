@@ -5,7 +5,7 @@ import {scryptSync} from "node:crypto";
 import {makeSession,SESSION_COOKIE} from "../lib/ai-room-private-auth";
 import {
   NativeObjectStore,nativeCredentialsConfigured,nativeObjectName,normalizeOciId,privateVideoPath,
-  classifyNativeFailure,nativeError
+  classifyNativeFailure,nativeError,retryTransientOciList
 } from "../lib/ai-room-native-objects";
 import {privateDelete,privateReadNative} from "../lib/ai-room-private-storage";
 import {VideoEngineError} from "../lib/video-engine";
@@ -365,4 +365,30 @@ test("SDK retry log guard hides only scoped OCI retry warnings and preserves unr
   }finally{
     console.warn=originalWarn;
   }
+});
+
+test("OCI Gallery transient list failure gets one bounded read-only retry",async()=>{
+  let attempts=0,waits=0;
+  const result=await retryTransientOciList(async()=>{
+    attempts+=1;
+    if(attempts===1)throw {statusCode:503,code:"ServiceUnavailable"};
+    return {Contents:[{Key:"jobs/alice/safe.json"}],KeyCount:1};
+  },async()=>{waits+=1;});
+  assert.equal(attempts,2);
+  assert.equal(waits,1);
+  assert.equal(result.KeyCount,1);
+});
+
+test("OCI inventory never retries permission problems or absent buckets",async()=>{
+  for(const statusCode of [403,404]){
+    let attempts=0;
+    await assert.rejects(()=>retryTransientOciList(async()=>{attempts++;throw {statusCode};},async()=>{}));
+    assert.equal(attempts,1,"HTTP "+statusCode+" must not be silently retried");
+  }
+});
+
+test("OCI inventory retry is capped at two attempts",async()=>{
+  let attempts=0;
+  await assert.rejects(()=>retryTransientOciList(async()=>{attempts++;throw {code:"ECONNRESET"};},async()=>{}));
+  assert.equal(attempts,2);
 });
