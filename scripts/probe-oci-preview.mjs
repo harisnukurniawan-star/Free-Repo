@@ -141,5 +141,71 @@ try{
       }
     }
   }
+
+  // Read-only inventory of gallery status, without emitting user IDs,
+  // job IDs, prompts, media URLs, or metadata body content.
+  // This checks stored private metadata only, not browser sessions.
+  try{
+    const users=JSON.parse(process.env.AI_ROOM_USERS_JSON||"[]");
+    if(!Array.isArray(users) || users.length===0 || users.length>25 ||
+        !users.every(row=>typeof row.id==="string" && /^[a-z0-9][a-z0-9_-]{2,39}$/.test(row.id)))
+      throw {code:"invalid_users"};
+    const totals={accountsChecked:0,records:0,deleted:0,historyVisible:0,
+      completedVisible:0,inconsistentOwner:0,unverified:0,moreRecords:false};
+    for(const row of users){
+      const prefix="jobs/"+row.id+"/";
+      const response=await timeout(client.listObjects({
+        namespaceName:process.env.AI_ROOM_OCI_NAMESPACE,
+        bucketName:process.env.AI_ROOM_OCI_BUCKET,
+        prefix,limit:51,fields:"name"
+      }),12000);
+      if(response.listObjects.nextStartWith || (response.listObjects.objects||[]).length>50){
+        totals.moreRecords=true;break;
+      }
+      totals.accountsChecked++;
+      for(const object of response.listObjects.objects||[]){
+        if(!object.name?.startsWith(prefix) || !object.name?.endsWith(".json")){
+          totals.unverified++;continue;
+        }
+        const token=object.name.slice(prefix.length,-5);
+        if(!/^(?:fast|a14b|v27|v3|v3prime):(text|image):[A-Za-z0-9_-]{1,128}$/.test(token)){
+          totals.unverified++;continue;
+        }
+        totals.records++;
+        try{
+          const data=await timeout(client.getObject({
+            namespaceName:process.env.AI_ROOM_OCI_NAMESPACE,
+            bucketName:process.env.AI_ROOM_OCI_BUCKET,
+            objectName:object.name
+          }),12000);
+          const bytes=Buffer.from(await buffer(Readable.from(data.value)));
+          if(bytes.length>16000)throw {code:"metadata_too_large"};
+          const metadata=JSON.parse(bytes.toString("utf8"));
+          if(metadata.owner!==row.id || metadata.id!==token){
+            totals.inconsistentOwner++;continue;
+          }
+          if(metadata.status==="deleted"){totals.deleted++;continue;}
+          if(!["queued","processing","completed","failed"].includes(metadata.status)){
+            totals.unverified++;continue;
+          }
+          try{
+            await timeout(client.headObject({
+              namespaceName:process.env.AI_ROOM_OCI_NAMESPACE,
+              bucketName:process.env.AI_ROOM_OCI_BUCKET,
+              objectName:"deleted/"+row.id+"/"+token+".json"
+            }),8000);
+            totals.deleted++;
+          }catch(e){
+            if(classify(e).httpStatus===404 || e?.code==="NotFound"){
+              totals.historyVisible++;
+              if(metadata.status==="completed")totals.completedVisible++;
+            }else totals.unverified++;
+          }
+        }catch(e){totals.unverified++;}
+      }
+    }
+    log("owner_gallery_inventory",totals.unverified||totals.moreRecords||
+      totals.inconsistentOwner?"inconclusive":"pass",totals);
+  }catch(e){log("owner_gallery_inventory","failed",classify(e));}
 }catch(e){log("sdk_setup","failed",classify(e));}
 finally{client?.close();}
