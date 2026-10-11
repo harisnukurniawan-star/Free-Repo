@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 /**
- * Read-only OCI connectivity probe for one protected Vercel Preview branch.
- * No writes, no video generation, and no metadata/object names are logged.
+ * OCI connectivity probe for one protected Vercel Preview branch.
+ * Makes one disposable sub-kilobyte test object, reads it, then deletes it.
+ * No user video or metadata objects are changed and no object names are logged.
  * Explicitly non-blocking: diagnostics must never interrupt deployments.
  */
+import {randomUUID} from "node:crypto";
+import {Readable} from "node:stream";
+import {buffer} from "node:stream/consumers";
 import * as common from "oci-common";
 import * as objectstorage from "oci-objectstorage";
 
@@ -74,6 +78,7 @@ try{
     namespaceOk=true;
     log("signed_namespace_read","pass");
   }catch(e){log("signed_namespace_read","failed",classify(e));}
+  let listOk=false;
   try{
     const result=await timeout(client.listObjects({
       namespaceName:process.env.AI_ROOM_OCI_NAMESPACE,
@@ -83,7 +88,58 @@ try{
       fields:"name"
     }),12000);
     if(!result || !result.listObjects)throw {code:"unexpected_response"};
+    listOk=true;
     log("signed_bucket_list","pass",{namespaceOk});
   }catch(e){log("signed_bucket_list","failed",classify(e));}
+
+  // Exercise exact byte integrity and deletion using a disposable, non-user key.
+  // Cleanup is attempted even if the signed write returns an uncertain result.
+  if(listOk){
+    const objectName="usage/nativeprobe/"+new Date().toISOString().slice(0,10)+"/"+
+      randomUUID()+".json";
+    const params={
+      namespaceName:process.env.AI_ROOM_OCI_NAMESPACE,
+      bucketName:process.env.AI_ROOM_OCI_BUCKET,objectName
+    };
+    const payload=Buffer.from(JSON.stringify({probe:"temporary-oci-storage-check",nonce:randomUUID()}));
+    let attemptedWrite=false;
+    try{
+      attemptedWrite=true;
+      await timeout(client.putObject({...params,
+        putObjectBody:payload,contentLength:payload.length,contentType:"application/json",
+        cacheControl:"private, no-store"}),12000);
+      log("temporary_write","pass");
+      const result=await timeout(client.getObject(params),12000);
+      const contents=Buffer.from(await buffer(Readable.from(result.value)));
+      if(!contents.equals(payload))throw {code:"readback_mismatch"};
+      log("temporary_readback","pass");
+      const direct="https://objectstorage.ap-batam-1.oraclecloud.com/n/"+
+        encodeURIComponent(params.namespaceName)+"/b/"+
+        encodeURIComponent(params.bucketName)+"/o/"+
+        encodeURIComponent(params.objectName);
+      try{
+        const anon=await fetch(direct,{redirect:"manual",signal:AbortSignal.timeout(7000)});
+        await anon.body?.cancel();
+        log("anonymous_read",([401,403,404].includes(anon.status)?"denied":"unexpected"),{httpStatus:anon.status});
+      }catch(e){log("anonymous_read","inconclusive",{category:classify(e?.cause||e).category});}
+    }catch(e){log("temporary_storage","failed",classify(e));}
+    finally{
+      if(attemptedWrite){
+        try{
+          await timeout(client.deleteObject(params),12000);
+          log("temporary_delete","pass");
+          try{
+            await timeout(client.headObject(params),8000);
+            log("temporary_delete_verify","failed");
+          }catch(e){
+            const f=classify(e);
+            if(f.httpStatus===404 || e?.code==="NotFound")
+              log("temporary_delete_verify","pass");
+            else log("temporary_delete_verify","inconclusive",f);
+          }
+        }catch(e){log("temporary_delete","failed",classify(e));}
+      }
+    }
+  }
 }catch(e){log("sdk_setup","failed",classify(e));}
 finally{client?.close();}
