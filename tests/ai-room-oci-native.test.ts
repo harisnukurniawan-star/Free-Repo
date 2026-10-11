@@ -24,7 +24,10 @@ function fixture(t:import("node:test").TestContext){
     AI_ROOM_STORAGE_MODE:"oci",AI_ROOM_OCI_DRIVER:"native",
     AI_ROOM_OCI_BUCKET_PRIVACY_VERIFIED:"true",AI_ROOM_OCI_NAMESPACE:"axf1xcjq8gsy",
     AI_ROOM_OCI_BUCKET:"ai-room-private-videos",AI_ROOM_SESSION_SECRET:"q".repeat(64),
-    AI_ROOM_USERS_JSON:"[]",
+    AI_ROOM_USERS_JSON:JSON.stringify([
+      {id:"alice",salt:"aa".repeat(16),passwordHash:"bb".repeat(64)},
+      {id:"bobby",salt:"aa".repeat(16),passwordHash:"cc".repeat(64)}
+    ]),
     AI_ROOM_OCI_TENANCY_ID:"ocid1.tenancy.oc1..example",AI_ROOM_OCI_USER_ID:"ocid1.user.oc1..example",
     AI_ROOM_OCI_KEY_FINGERPRINT:Array(16).fill("aa").join(":"),
     AI_ROOM_OCI_PRIVATE_KEY:"-----BEGIN RSA PRIVATE KEY-----\nTEST-ONLY-NOT-A-REAL-KEY\n-----END RSA PRIVATE KEY-----"
