@@ -4,7 +4,8 @@ import {Readable} from "node:stream";
 import {scryptSync} from "node:crypto";
 import {makeSession,SESSION_COOKIE} from "../lib/ai-room-private-auth";
 import {
-  NativeObjectStore,nativeCredentialsConfigured,nativeObjectName,normalizeOciId,privateVideoPath
+  NativeObjectStore,nativeCredentialsConfigured,nativeObjectName,normalizeOciId,privateVideoPath,
+  classifyNativeFailure,nativeError
 } from "../lib/ai-room-native-objects";
 import {privateDelete,privateReadNative} from "../lib/ai-room-private-storage";
 import {VideoEngineError} from "../lib/video-engine";
@@ -278,4 +279,45 @@ test("OCI signing IDs normalize hidden CRLF and control characters without chang
   assert.equal(nativeCredentialsConfigured(),true);
   process.env.AI_ROOM_OCI_USER_ID=user+"bad!header";
   assert.equal(nativeCredentialsConfigured(),false);
+});
+
+
+test("OCI native failure categories distinguish authorization, transport and unknown causes",()=>{
+  assert.deepEqual(classifyNativeFailure({statusCode:403,message:"PRIVATE-SECRET-NEVER-LOG"}),{
+    status:403,category:"auth_or_policy"
+  });
+  assert.deepEqual(classifyNativeFailure({statusCode:401,code:"NotAuthenticated"}),{
+    status:401,category:"auth_or_policy"
+  });
+  assert.deepEqual(classifyNativeFailure({statusCode:404,code:"NotFound"}),{
+    status:404,category:"not_found"
+  });
+  assert.deepEqual(classifyNativeFailure({code:"unavailable",message:"Signing key unknown"}),{
+    status:null,category:"network_or_signing"
+  });
+  assert.deepEqual(classifyNativeFailure({statusCode:503}),{
+    status:503,category:"oci_service"
+  });
+  assert.deepEqual(classifyNativeFailure(new Error("Unknown exception")),{
+    status:null,category:"unclassified"
+  });
+});
+
+test("OCI native operator logs contain no raw SDK error message or private object key",()=>{
+  const old=console.warn;
+  const lines:string[]=[];
+  console.warn=(...args:unknown[])=>{lines.push(args.map(String).join(" "));};
+  try{
+    assert.throws(()=>nativeError({
+      statusCode:403,
+      code:"NotAuthenticated",
+      message:"SECRET Authorization=abc",
+      requestEndpoint:"https://objectstorage.example/private-videos/alice"
+    },"list"),VideoEngineError);
+  }finally{console.warn=old;}
+  assert.equal(lines.length,1);
+  assert.match(lines[0],/AI_ROOM_OCI_NATIVE_FAILURE/);
+  assert.match(lines[0],/auth_or_policy/);
+  assert.match(lines[0],/"operation":"list"/);
+  assert.doesNotMatch(lines[0],/SECRET|Authorization|private-videos|alice/);
 });
