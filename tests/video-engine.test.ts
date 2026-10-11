@@ -584,3 +584,54 @@ test("provider HTTP 422 error is categorized without replaying paid submit", asy
   );
   assert.equal(posts, 1);
 });
+
+
+test("provider safety rejection is classified from its message without leaking raw detail", async ctx => {
+  useFal(ctx);
+  let posts=0;
+  globalThis.fetch=(async (_url, init)=>{
+    if(init?.method==="POST")posts++;
+    return json({ detail: "The safety checker flagged the input as NSFW. Private image must stay hidden." }, 422);
+  }) as typeof fetch;
+  await assert.rejects(()=>getVideoEngine().submit(parseVideoRequest({
+    prompt:"A romantic candlelit ballroom with consenting adult dancers",
+    mode:"image",imageUrl:"data:image/png;base64,AAAA",model:"Wan 2.2 Fast",
+    duration:"5s",quality:"720p",aspect:"16:9",contentMode:"standard",
+  })),(err:unknown)=>{
+    assert.ok(err instanceof VideoEngineError);
+    assert.equal(err.httpStatus,422);
+    assert.match(err.message,/content safety policy/i);
+    assert.doesNotMatch(err.message,/Private image/i);
+    return true;
+  });
+  assert.equal(posts,1);
+});
+
+test("provider reference image validation is classified from structured detail fields", async ctx => {
+  useFal(ctx);
+  globalThis.fetch=(async()=>json({
+    detail:[{loc:["body","image_url"],msg:"Invalid image format",type:"value_error"}],
+  },422)) as typeof fetch;
+  await assert.rejects(()=>getVideoEngine().submit(parseVideoRequest({
+    prompt:"A cinematic portrait in warm natural light",
+    mode:"image",imageUrl:"data:image/jpeg;base64,AAAA",model:"Wan 2.2 Fast",
+    duration:"5s",quality:"720p",aspect:"16:9",contentMode:"standard",
+  })),(err:unknown)=>{
+    assert.ok(err instanceof VideoEngineError);
+    assert.match(err.message,/reference image/i);
+    assert.doesNotMatch(err.message,/image_url|value_error/i);
+    return true;
+  });
+});
+
+test("queued safety failure is categorized even if the provider omits error_type", async ctx => {
+  useFal(ctx);
+  globalThis.fetch=(async()=>json({
+    status:"FAILED",request_id:"nsfw123",
+    error:{message:"Input was rejected by safety checker: private provider text"},
+  })) as typeof fetch;
+  const job=await getVideoEngine().status("fast:image:nsfw123");
+  assert.equal(job.status,"failed");
+  assert.match(job.error||"",/content safety policy/i);
+  assert.doesNotMatch(job.error||"",/private provider text/i);
+});
