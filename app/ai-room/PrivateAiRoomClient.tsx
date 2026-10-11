@@ -35,6 +35,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
   const [contentMode,setContentMode]=useState<"standard"|"mature">("standard");
   const [matureEligible,setMatureEligible]=useState(false);
   const [adultConfirmed,setAdultConfirmed]=useState(false);
+  const [imageConsentConfirmed,setImageConsentConfirmed]=useState(false);
   const [prompt,setPrompt]=useState("");
   const [model,setModel]=useState<WanModel>("Wan 2.2 Fast");
   const [duration,setDuration]=useState<WanDuration>("5s");
@@ -147,7 +148,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
       activeUserRef.current=data.user;
       setUser(data.user);setPassword("");setMatureEligible(data.matureEligible===true);
       setJobs([]);setJobsLoadState("loading");setJobsLoadError("");
-      setContentMode("standard");setAdultConfirmed(false);
+      setContentMode("standard");setAdultConfirmed(false);setImageConsentConfirmed(false);
     }catch(e){setError(e instanceof Error?e.message:"Login failed");}
     finally{setBusy(false);}
   }
@@ -157,11 +158,11 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
       invalidateSession();
       activeUserRef.current=null;
       setUser(null);setBusy(false);setJobs([]);setJobsLoadState("idle");setJobsLoadError("");setOpenJob(null);setReference("");setPrompt("");setError("");
-      setMatureEligible(false);setContentMode("standard");setAdultConfirmed(false);
+      setMatureEligible(false);setContentMode("standard");setAdultConfirmed(false);setImageConsentConfirmed(false);
     }catch(e){setError(e instanceof Error?e.message:"Sign-out failed");}
   }
   function imageChanged(file?:File){
-    setReference("");setReferenceName("");
+    setReference("");setReferenceName("");setImageConsentConfirmed(false);
     if(!file)return;
     if(!["image/jpeg","image/png","image/webp"].includes(file.type) || file.size>2_500_000){
       setError("Use a JPG, PNG or WEBP reference no larger than 2.5 MB.");return;
@@ -179,7 +180,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
     if(!(WAN_CATALOG[value].qualities as readonly string[]).includes(quality))setQuality("720p");
   }
   const estimate=useMemo(()=>estimateWanCostUsd({model,mode,duration,quality}),[model,mode,duration,quality]);
-  const canGenerate=ready&&Boolean(user)&&jobsLoadState==="ready"&&!busy&&prompt.trim().length>=3&&(mode==="text"||Boolean(reference))&&estimate!==null&&(contentMode==="standard"||(matureEligible&&adultConfirmed&&mode==="text"));
+  const canGenerate=ready&&Boolean(user)&&jobsLoadState==="ready"&&!busy&&prompt.trim().length>=3&&(mode==="text"||Boolean(reference))&&estimate!==null&&(contentMode==="standard"||(matureEligible&&adultConfirmed&&(mode==="text"||imageConsentConfirmed)));
   async function generate(){
     if(!canGenerate)return;
     const epoch=sessionEpoch.current;
@@ -188,7 +189,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
       const imageUrl=mode==="image"?await frameReferenceImage(reference,ratio):undefined;
       const result=await asJson(await fetch("/api/ai-room/generate",{
         method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({prompt:prompt.trim(),mode,model,duration,aspect:ratio,quality,preserveFace:mode==="image"&&preserveFace,imageUrl,contentMode,adultConfirmed:contentMode==="mature"&&adultConfirmed})
+        body:JSON.stringify({prompt:prompt.trim(),mode,model,duration,aspect:ratio,quality,preserveFace:mode==="image"&&preserveFace,imageUrl,contentMode,adultConfirmed:contentMode==="mature"&&adultConfirmed,imageConsentConfirmed:contentMode==="mature"&&mode==="image"&&imageConsentConfirmed})
       }));
       if(epoch!==sessionEpoch.current)return;
       setJobs(current=>[result.job as PrivateJob,...current]);
@@ -244,17 +245,18 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
         {view==="generate"&&<div className="studio-grid">
           <section className="composer card">
             <div className="content-mode-toggle" role="group" aria-label="Content category">
-              <button type="button" className={contentMode==="standard"?"active":""} aria-pressed={contentMode==="standard"} onClick={()=>{setContentMode("standard");setAdultConfirmed(false);}}>Standard</button>
-              <button type="button" className={contentMode==="mature"?"active":""} aria-pressed={contentMode==="mature"} disabled={!matureEligible} onClick={()=>{setContentMode("mature");setMode("text");setAdultConfirmed(false);}}>Mature 18+</button>
+              <button type="button" className={contentMode==="standard"?"active":""} aria-pressed={contentMode==="standard"} onClick={()=>{setContentMode("standard");setAdultConfirmed(false);setImageConsentConfirmed(false);}}>Standard</button>
+              <button type="button" className={contentMode==="mature"?"active":""} aria-pressed={contentMode==="mature"} disabled={!matureEligible} onClick={()=>{setContentMode("mature");setAdultConfirmed(false);setImageConsentConfirmed(false);}}>Mature 18+</button>
             </div>
             {contentMode==="mature"&&<div className="mature-mode-notice">
               <strong>Mature 18+ · non-explicit</strong>
-              <p>Adult romance, sensual atmosphere, and cinematic storytelling only. No nudity, explicit acts, sexualized minors, or non-consensual intimate material. Text-to-video only.</p>
+              <p>Adult romance, sensual atmosphere, and cinematic storytelling only. No nudity, explicit acts, sexualized minors, or non-consensual intimate material. Image-to-video requires permission to use every depicted adult reference.</p>
               <label className="mature-confirm"><input type="checkbox" checked={adultConfirmed} onChange={e=>setAdultConfirmed(e.target.checked)}/><span>I confirm that I am at least 18 years old, the depicted people are consenting adults, and I have permission to use the content.</span></label>
-              <small>Eligibility is controlled by your account operator. The model provider can still reject prompts under its own policies. Output remains in your private OCI gallery.</small>
+              {mode==="image"&&<label className="mature-confirm"><input type="checkbox" checked={imageConsentConfirmed} onChange={e=>setImageConsentConfirmed(e.target.checked)}/><span>I confirm this reference depicts only adults aged 18+, and I have the explicit permission of every identifiable person to animate their likeness in this non-explicit video. I will not create deceptive or non-consensual intimate content.</span></label>}
+              <small>Eligibility is controlled by your account operator. The model provider can still reject prompts or reference images under its own policies. Confirmation is not automatic age or identity verification. Output remains in your private OCI gallery.</small>
             </div>}
             <div className="tabs"><button className={mode==="text"?"active":""} onClick={()=>setMode("text")}>Text → Video</button>
-              <button disabled={contentMode==="mature"} className={mode==="image"?"active":""} onClick={()=>setMode("image")}>Image → Video</button></div>
+              <button className={mode==="image"?"active":""} onClick={()=>{setMode("image");setImageConsentConfirmed(false);}}>Image → Video</button></div>
             {mode==="image"&&<div>
               <label className="drop"><input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>{imageChanged(e.target.files?.[0]);e.currentTarget.value="";}}/>
                 {reference?<><img className="reference-preview" src={reference} alt="Reference photo"/><b>{referenceName}</b></>:<><b>＋ Add reference image</b><span>JPG / PNG / WEBP · max 2.5 MB</span></>}</label>

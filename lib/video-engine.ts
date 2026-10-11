@@ -16,6 +16,7 @@ export type VideoRequest = {
   preserveFace?: boolean;
   contentMode: AiRoomContentMode;
   adultConfirmed: boolean;
+  imageConsentConfirmed: boolean;
 };
 export type VideoJob = {
   id: string;
@@ -74,12 +75,18 @@ export function parseVideoRequest(value: unknown): VideoRequest {
     throw new VideoEngineError("Invalid adult confirmation.", 400, false);
   }
   const adultConfirmed = body.adultConfirmed === true;
+  if (body.imageConsentConfirmed !== undefined && typeof body.imageConsentConfirmed !== "boolean") {
+    throw new VideoEngineError("Invalid image consent confirmation.", 400, false);
+  }
+  const imageConsentConfirmed = body.imageConsentConfirmed === true;
   const policyFailure = contentPolicyRejection(body.prompt);
   if (policyFailure) throw new VideoEngineError(policyFailure, 422, false);
   if (contentMode === "mature") {
     if (!matureContentModeEnabled()) throw new VideoEngineError("Mature content mode is disabled by the server administrator.", 403, false);
     if (!adultConfirmed) throw new VideoEngineError("Confirm you are 18 or older to use mature content mode.", 403, false);
-    if (mode === "image") throw new VideoEngineError("Mature image-to-video is unavailable until age, identity and image-consent checks are implemented.", 403, false);
+    if (mode === "image" && !imageConsentConfirmed) {
+      throw new VideoEngineError("Mature image-to-video requires confirmation that every depicted person is an adult and has given permission to use their likeness.", 403, false);
+    }
   }
   const model = body.model === undefined ? WAN_MODEL_NAMES[0] : body.model;
   if (!isWanModel(model)) throw new VideoEngineError("Unsupported model.", 400, false);
@@ -109,7 +116,7 @@ export function parseVideoRequest(value: unknown): VideoRequest {
     throw new VideoEngineError("Invalid preserve face setting.", 400, false);
   }
   const preserveFace = mode === "image" && body.preserveFace === true;
-  return { prompt: body.prompt.trim(), mode, model, duration, aspect, quality, imageUrl, preserveFace, contentMode, adultConfirmed };
+  return { prompt: body.prompt.trim(), mode, model, duration, aspect, quality, imageUrl, preserveFace, contentMode, adultConfirmed, imageConsentConfirmed };
 }
 
 function parseJobId(id: string) {
