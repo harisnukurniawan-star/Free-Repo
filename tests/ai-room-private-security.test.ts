@@ -128,6 +128,10 @@ test("OCI production cutover is locked until deliberate approval and native driv
   process.env.AI_ROOM_OCI_PRODUCTION_APPROVED="true";
   assert.equal(productionOciReleaseApproved(),false,"S3 compatibility cannot silently become the native production driver");
   process.env.AI_ROOM_OCI_DRIVER="native";
+  assert.equal(productionOciReleaseApproved(),false,
+    "Production cannot point to the Preview bucket, even with operator approval");
+  assert.equal(privateVideoConfigured(),false);
+  process.env.AI_ROOM_OCI_BUCKET="ai-room-private-videos-prod";
   assert.equal(productionOciReleaseApproved(),true);
   // Still fail closed: production needs its own actual native API credentials.
   assert.equal(privateVideoConfigured(),false);
