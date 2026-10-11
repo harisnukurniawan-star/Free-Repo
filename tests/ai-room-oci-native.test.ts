@@ -321,3 +321,15 @@ test("OCI native operator logs contain no raw SDK error message or private objec
   assert.match(lines[0],/"operation":"list"/);
   assert.doesNotMatch(lines[0],/SECRET|Authorization|private-videos|alice/);
 });
+
+
+test("missing OCI bucket on list never masquerades as an absent video object",()=>{
+  const warn=console.warn;
+  console.warn=()=>{};
+  try{
+    assert.throws(()=>nativeError({statusCode:404,code:"NotFound"},"list"),(e:unknown)=>
+      e instanceof VideoEngineError && e.httpStatus===503);
+    assert.throws(()=>nativeError({statusCode:404,code:"NotFound"},"head"),(e:unknown)=>
+      e instanceof Error && e.name==="NotFound");
+  }finally{console.warn=warn;}
+});
