@@ -1,5 +1,5 @@
 import "server-only";
-import {Readable} from "node:stream";
+import {Readable,Transform} from "node:stream";
 import {S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command, HeadObjectCommand} from "@aws-sdk/client-s3";
 import {Upload} from "@aws-sdk/lib-storage";
 import {getSignedUrl} from "@aws-sdk/s3-request-presigner";
@@ -181,6 +181,26 @@ export function assertFalMediaUrl(raw:string):URL{
   }
   return u;
 }
+/** Enforce real streamed byte count instead of trusting Content-Length from fal CDN. */
+export function boundedVideoStream(source:Readable, declaredBytes:number):Readable {
+  if(!Number.isSafeInteger(declaredBytes)||declaredBytes<=0||declaredBytes>VIDEO_LIMIT){
+    throw new VideoEngineError("Invalid provider video size.",502,false);
+  }
+  let received=0;
+  return source.pipe(new Transform({
+    transform(chunk:Buffer,_enc,done){
+      received+=chunk.length;
+      if(received>declaredBytes || received>VIDEO_LIMIT){
+        done(new VideoEngineError("Video exceeded its declared byte length.",502,false));
+      }else done(null,chunk);
+    },
+    flush(done){
+      if(received!==declaredBytes){
+        done(new VideoEngineError("Video transfer ended before expected content length.",502,true));
+      }else done();
+    }
+  }));
+}
 async function importVideo(owner:string,id:string,source:string):Promise<void>{
   const url=assertFalMediaUrl(source);
   const c=client(),{bucket}=settings(),dst=videoKey(owner,id);
@@ -205,7 +225,7 @@ async function importVideo(owner:string,id:string,source:string):Promise<void>{
     }
     await requireNotDeleted(owner,id);
     await new Upload({client:c,params:{Bucket:bucket,Key:dst,
-      Body:Readable.fromWeb(response.body as import("node:stream/web").ReadableStream),
+      Body:boundedVideoStream(Readable.fromWeb(response.body as import("node:stream/web").ReadableStream),size),
       ContentType:"video/mp4",ContentLength:size,CacheControl:"private, no-store"},
       queueSize:2,partSize:8*1024*1024,leavePartsOnError:false}).done();
     if(await wasDeleted(owner,id)){
