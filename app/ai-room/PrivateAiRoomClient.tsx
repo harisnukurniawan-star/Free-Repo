@@ -62,11 +62,15 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
     const epoch=sessionEpoch.current;
     const sequence=++gallerySequence.current;
     const request=new AbortController();
+    // Bound the browser wait even when an old OCI deployment is retrying.
+    // A timeout reports a connection error; it must never fabricate an empty Gallery.
+    const timeout=AbortSignal.timeout(8_000);
+    const signal=AbortSignal.any([request.signal,timeout]);
     galleryRequests.current.add(request);
     setJobsLoadState(previous=>previous==="ready"?"ready":"loading");
     try{
       const result=await asJson(await fetch("/api/ai-room/jobs",{
-        cache:"no-store",signal:request.signal
+        cache:"no-store",signal
       }));
       if(activeUserRef.current!==owner || epoch!==sessionEpoch.current ||
         sequence!==gallerySequence.current)return;
@@ -78,8 +82,11 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
       if(request.signal.aborted || activeUserRef.current!==owner ||
         epoch!==sessionEpoch.current || sequence!==gallerySequence.current)return;
       setJobsLoadState("error");
-      setJobsLoadError(e instanceof Error?e.message:"Unable to load private videos.");
-      throw e;
+      const message=timeout.aborted
+        ? "OCI Gallery did not respond within 8 seconds. The saved videos were not changed. Retry after checking the storage connection."
+        : e instanceof Error?e.message:"Unable to load private videos.";
+      setJobsLoadError(message);
+      throw new Error(message);
     }finally{
       galleryRequests.current.delete(request);
     }

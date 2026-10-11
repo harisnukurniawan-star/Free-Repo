@@ -62,12 +62,37 @@ function client(){
   c.region=common.Region.AP_BATAM_1;
   return c;
 }
-export function nativeError(error:unknown):never {
-  const e=error as {statusCode?:number;code?:string};
-  if(e?.statusCode===404 || e?.code==="NotFound") {
+export type NativeFailureCategory =
+  "not_found"|"auth_or_policy"|"rate_limited"|"oci_service"|
+  "network_or_signing"|"unclassified";
+export function classifyNativeFailure(error:unknown):{status:number|null;category:NativeFailureCategory}{
+  // Never inspect or log request paths, message strings, authorization headers, or PEM content.
+  if(!error || typeof error!=="object")return {status:null,category:"unclassified"};
+  const e=error as {statusCode?:unknown;status?:unknown;code?:unknown};
+  const raw=typeof e.statusCode==="number"?e.statusCode:e.status;
+  const status=typeof raw==="number" && Number.isInteger(raw) && raw>=100 && raw<=599?raw:null;
+  const code=typeof e.code==="string"?e.code:"";
+  if(status===404 || code==="NotFound")return {status,category:"not_found"};
+  if(status===401 || status===403 || code==="NotAuthenticated" || code==="NotAuthorizedOrNotFound")
+    return {status,category:"auth_or_policy"};
+  if(status===429 || code==="TooManyRequests")return {status,category:"rate_limited"};
+  if(status!==null && status>=500)return {status,category:"oci_service"};
+  // The SDK can produce code 'unavailable' for several client-side failures.
+  // This is NOT evidence that the signing key itself is incorrect.
+  if(["unavailable","ECONNRESET","ETIMEDOUT","ENOTFOUND","EAI_AGAIN","ECONNREFUSED"].includes(code))
+    return {status,category:"network_or_signing"};
+  return {status,category:"unclassified"};
+}
+export function nativeError(error:unknown,operation:"head"|"get"|"put"|"list"|"delete"|"stream"="get"):never {
+  const failure=classifyNativeFailure(error);
+  // An absent individual object is normal; a 404 when listing means the
+  // bucket, namespace or route is wrong and must never look like an empty gallery.
+  if(failure.category==="not_found" && (operation==="head" || operation==="get" || operation==="stream")){
     const notFound=new Error("Native OCI object missing");notFound.name="NotFound";throw notFound;
   }
-  // Never expose signed request, source URL, or OCI authentication data to clients.
+  // Only fixed labels and numeric HTTP statuses. Never log the SDK error object:
+  // it may contain headers, the requested private object key, or signed URLs.
+  console.warn("AI_ROOM_OCI_NATIVE_FAILURE",JSON.stringify({operation,...failure}));
   throw new VideoEngineError("Private OCI Object Storage operation failed.",503,true);
 }
 export type NativeListItem={Key?:string;LastModified?:Date};
@@ -78,7 +103,7 @@ export class NativeObjectStore {
     try{
       const r=await c.headObject({...config(),objectName:nativeObjectName(key)});
       return {ContentLength:r.contentLength};
-    }catch(e){return nativeError(e);}finally{c.close();}
+    }catch(e){return nativeError(e,"head");}finally{c.close();}
   }
   async put(key:string,body:string|Buffer|Readable,size?:number,type="application/json"):Promise<void>{
     const c=client();
@@ -90,7 +115,7 @@ export class NativeObjectStore {
     try{
       await c.putObject({...config(),objectName:nativeObjectName(key),
         putObjectBody:b,contentLength,contentType:type,cacheControl:"private, no-store"});
-    }catch(e){return nativeError(e);}finally{c.close();}
+    }catch(e){return nativeError(e,"put");}finally{c.close();}
   }
   async getText(key:string):Promise<string>{
     const c=client();
@@ -104,7 +129,7 @@ export class NativeObjectStore {
         chunks.push(b);
       }
       return Buffer.concat(chunks).toString("utf8");
-    }catch(e){if(e instanceof VideoEngineError)throw e;return nativeError(e);}finally{c.close();}
+    }catch(e){if(e instanceof VideoEngineError)throw e;return nativeError(e,"get");}finally{c.close();}
   }
   async list(prefix:string,limit:number):Promise<NativeList>{
     const c=client();
@@ -113,13 +138,13 @@ export class NativeObjectStore {
       const contents=(r.listObjects.objects||[]).map(o=>({Key:o.name,LastModified:o.timeModified}));
       return {Contents:contents,KeyCount:contents.length,IsTruncated:Boolean(r.listObjects.nextStartWith)};
     }catch(e){
-      return nativeError(e);
+      return nativeError(e,"list");
     }finally{c.close();}
   }
   async delete(key:string):Promise<void>{
     const c=client();
     try{await c.deleteObject({...config(),objectName:nativeObjectName(key)});}
-    catch(e){return nativeError(e);}finally{c.close();}
+    catch(e){return nativeError(e,"delete");}finally{c.close();}
   }
   async getVideo(key:string,range?:{start:number;end:number;total:number}):Promise<{body:Readable;length:number}>{
     const c=client();
@@ -132,6 +157,6 @@ export class NativeObjectStore {
       body.once("close",()=>c.close());
       body.once("error",()=>c.close());
       return {body,length:res.contentLength};
-    }catch(e){c.close();return nativeError(e);}
+    }catch(e){c.close();return nativeError(e,"stream");}
   }
 }
