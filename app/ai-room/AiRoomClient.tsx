@@ -97,7 +97,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
     const timer=window.setTimeout(()=>{try{if(!initialProviderState.generationPinEnabled)setAccessKey(sessionStorage.getItem("ai-room-generation-key")||"");else sessionStorage.removeItem("ai-room-generation-key")}catch{}},0);
     return()=>window.clearTimeout(timer);
   },[initialProviderState.generationPinEnabled]);
-  useEffect(()=>{if(providerState.generationPinEnabled){setAccessKey("");try{sessionStorage.removeItem("ai-room-generation-key")}catch{}}},[providerState.generationPinEnabled]);
+  useEffect(()=>{if(providerState.generationPinEnabled){try{sessionStorage.removeItem("ai-room-generation-key")}catch{}}},[providerState.generationPinEnabled]);
 
   const modelConfig=WAN_CATALOG[model];
   const estimate=useMemo(()=>estimateWanCostUsd({model,mode,duration,quality}),[model,mode,duration,quality]);
