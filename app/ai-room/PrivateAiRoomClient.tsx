@@ -180,7 +180,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
     if(!(WAN_CATALOG[value].qualities as readonly string[]).includes(quality))setQuality("720p");
   }
   const estimate=useMemo(()=>estimateWanCostUsd({model,mode,duration,quality}),[model,mode,duration,quality]);
-  const canGenerate=ready&&Boolean(user)&&jobsLoadState==="ready"&&!busy&&prompt.trim().length>=3&&(mode==="text"||Boolean(reference))&&estimate!==null&&(contentMode==="standard"||(matureEligible&&adultConfirmed&&(mode==="text"||imageConsentConfirmed)));
+  const canGenerate=ready&&Boolean(user)&&!busy&&prompt.trim().length>=3&&(mode==="text"||Boolean(reference))&&estimate!==null&&(contentMode==="standard"||(matureEligible&&adultConfirmed&&(mode==="text"||imageConsentConfirmed)));
   async function generate(){
     if(!canGenerate)return;
     const epoch=sessionEpoch.current;
@@ -271,6 +271,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
               <label><span>Quality</span><select value={quality} onChange={e=>setQuality(e.target.value as WanQuality)}>{WAN_CATALOG[model].qualities.map(q=><option key={q}>{q}</option>)}</select></label>
             </div>
             <div className="info-banner">Your generated file will transfer from fal.ai into private OCI Object Storage. The reference is processed by fal.ai during inference.</div>
+            {jobsLoadState==="error"&&<div className="info-banner" role="status">Gallery is temporarily unavailable. New generation is allowed only if the server can verify OCI usage and storage. If an earlier submission is uncertain, wait for Gallery recovery before repeating the same prompt to avoid duplicate charges.</div>}
             <div className="generate-row"><div><small>Estimated fal.ai cost</small><strong>{estimate===null?"Unavailable":"~$"+estimate.toFixed(2)}</strong><small>Daily generation limit applies.</small></div>
               <button className="generate" disabled={!canGenerate} onClick={()=>void generate()}>{busy?"Working…":"Generate video ✦"}</button></div>
           </section>
