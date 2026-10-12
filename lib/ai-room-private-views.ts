@@ -31,3 +31,26 @@ export function privateVideoSurfaces<T extends PrivateVideoSurfaceJob>(jobs: rea
     history,
   };
 }
+
+/**
+ * An OCI inventory fetch can begin before a paid submission finishes and
+ * return after the browser has registered that new job. Never discard that
+ * local, server-confirmed job or restore a video just deleted in this session.
+ * Once OCI confirms a terminal status, it stays authoritative.
+ */
+export function reconcilePrivateJobs<T extends PrivateVideoSurfaceJob>(
+  remote: readonly T[], current: readonly T[], acceptedIds: ReadonlySet<string>,
+  locallyDeletedIds: ReadonlySet<string>,
+): T[] {
+  const merged=new Map(remote.filter(row=>!locallyDeletedIds.has(row.id)).map(row=>[row.id,row]));
+  for(const row of current){
+    if(!acceptedIds.has(row.id) || locallyDeletedIds.has(row.id))continue;
+    const fromStorage=merged.get(row.id);
+    if(!fromStorage || (
+      (row.status==="completed" || row.status==="failed") &&
+      (fromStorage.status==="queued" || fromStorage.status==="processing")
+    )) merged.set(row.id,row);
+  }
+  return [...merged.values()].sort((a,b)=>
+    createdAtMs(b.createdAt)-createdAtMs(a.createdAt) || b.id.localeCompare(a.id));
+}
