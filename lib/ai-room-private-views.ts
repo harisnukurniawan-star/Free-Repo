@@ -4,7 +4,7 @@
  */
 export type PrivateVideoSurfaceJob = {
   id: string;
-  status: "queued" | "processing" | "completed" | "failed";
+  status: "queued" | "processing" | "completed" | "failed" | "deleted";
   createdAt: string;
   videoUrl?: string;
 };
@@ -15,7 +15,7 @@ function createdAtMs(value: string): number {
 }
 
 export function privateVideoSurfaces<T extends PrivateVideoSurfaceJob>(jobs: readonly T[]) {
-  const history = [...jobs].sort((a, b) =>
+  const history = jobs.filter(job=>job.status!=="deleted").sort((a, b) =>
     createdAtMs(b.createdAt) - createdAtMs(a.createdAt) || b.id.localeCompare(a.id)
   );
   // Completed metadata without a playable URL must not be shown as a video.

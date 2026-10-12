@@ -59,9 +59,14 @@ test("unsigned and cross-origin private APIs fail before provider calls",async t
 });
 test("remote media host must be a real HTTPS fal.media domain",()=>{
   assert.equal(assertFalMediaUrl("https://v3.fal.media/files/video.mp4").hostname,"v3.fal.media");
+  assert.equal(assertFalMediaUrl("https://storage.googleapis.com/falserverless/model_tests/wan/movie.mp4").pathname,
+    "/falserverless/model_tests/wan/movie.mp4");
   for(const url of ["http://v3.fal.media/files/a.mp4","https://fal.media.evil.test/a.mp4",
     "https://127.0.0.1/private","https://user@v3.fal.media/a.mp4",
-    "https://evil-fal.media/a.mp4","https://v3.fal.media:8443/a.mp4"]){
+    "https://evil-fal.media/a.mp4","https://v3.fal.media:8443/a.mp4",
+    "https://storage.googleapis.com/private-user-uploads/a.mp4",
+    "https://storage.googleapis.com/falserverless.evil/a.mp4",
+    "https://storage.googleapis.com/falserverless/"]){
     assert.throws(()=>assertFalMediaUrl(url),VideoEngineError,url);
   }
 });
