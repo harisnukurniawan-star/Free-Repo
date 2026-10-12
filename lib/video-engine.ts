@@ -229,9 +229,9 @@ class FalWanEngine implements VideoEngine {
 
   constructor(private readonly key: string) {}
 
-  private client() {
+  private client(timeoutMs = 20_000) {
     const controller = new AbortController();
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]);
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(timeoutMs)]);
     const client = createFalClient({
       credentials: this.key,
       // The UI owns retries. Aborting on an error also prevents the SDK's queue
@@ -274,7 +274,10 @@ class FalWanEngine implements VideoEngine {
     const common = {
       prompt: scenePrompt,
       resolution: input.quality,
-      aspect_ratio: input.aspect,
+      // Wan 2.7 first-frame I2V does not accept aspect_ratio. Unlike 2.7 T2V,
+      // it derives the output composition from the provided first frame,
+      // which the browser has already framed to the selected ratio.
+      ...(tier !== "v27" || input.mode === "text" ? { aspect_ratio: input.aspect } : {}),
     };
     const faceAvoid = "altered identity, different face, face morphing, changed facial features, warped eyes, unnatural face, extra facial features";
     let payload: Record<string, string | number | boolean>;
@@ -299,7 +302,9 @@ class FalWanEngine implements VideoEngine {
         ...(input.mode === "image" ? { start_image_url: input.imageUrl! } : {}) };
     }
     try {
-      const { client, signal } = this.client();
+      // A Base64 reference can be several MB. Give the one-time image queue
+      // submission more transport time; do not retry a possibly billed POST.
+      const { client, signal } = this.client(input.mode === "image" ? 45_000 : 20_000);
       const queued = await client.queue.submit(endpoint, { input: payload, abortSignal: signal });
       if (!queued || !REQUEST_ID.test(queued.request_id ?? "")) {
         throw new VideoEngineError("Video provider did not return a valid job ID.", 502, false);
