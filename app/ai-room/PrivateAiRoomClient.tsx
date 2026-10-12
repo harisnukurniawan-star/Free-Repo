@@ -127,6 +127,10 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
             if(epoch!==sessionEpoch.current)break;
             const update=result.job as PrivateJob;
             setJobs(current=>current.map(row=>row.id===job.id?update:row));
+            if(update.status==="failed"){
+              setError((update.error||"The provider could not complete this request.")+
+                " No video was added to Recent, Gallery, or Preview.");
+            }
           }catch(e){
             if(epoch===sessionEpoch.current)
               setError(e instanceof Error?e.message:"Status temporarily unavailable; job was not resubmitted");
@@ -212,9 +216,9 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
       if(epoch===sessionEpoch.current)setError(e instanceof Error?e.message:"Delete failed; retry safely");
     }finally{if(epoch===sessionEpoch.current)setBusy(false);}
   }
-  const completed=jobs.filter(j=>j.status==="completed");
-  const latest=completed[0];
-  const visible=view==="gallery"?completed:jobs;
+  const surfaces=useMemo(()=>privateVideoSurfaces(jobs),[jobs]);
+  const {gallery:completed,recent,pending,preview:latest,history}=surfaces;
+  const visible=view==="gallery"?completed:view==="history"?history:recent;
   const title=view==="generate"?"Create a private video":view==="gallery"?"Private Gallery":view==="history"?"Video History":"Usage & Cost";
   return <main className="control-room ai-room-route">
     <aside className="sidebar">
