@@ -4,6 +4,7 @@ import Link from "next/link";
 import {WAN_CATALOG,WAN_MODEL_NAMES,isWanModel,type WanModel,type WanDuration,type WanQuality} from "@/lib/wan-models";
 import {estimateWanCostUsd} from "@/lib/ai-room-jobs";
 import {aspectValue,frameReferenceImage,type AiRoomAspect} from "@/lib/ai-room-framing";
+import {privateVideoSurfaces} from "@/lib/ai-room-private-views";
 
 type PrivateJob={
   id:string;prompt:string;model:string;mode:string;duration:string;aspect:string;quality:string;
