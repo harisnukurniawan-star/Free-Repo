@@ -39,6 +39,9 @@ export function referenceFrameLayout(width: number, height: number, aspect: AiRo
     x: (size.width - fittedWidth) / 2,
     y: (size.height - fittedHeight) / 2,
     needsFraming: Math.abs(width / height / ASPECTS[aspect] - 1) >= 0.015,
+    // A small compressed upload can still contain a huge decoded frame.
+    // Normalize only oversized sources; retain original resolution otherwise.
+    needsResize: Math.max(width,height)>1920,
   };
 }
 
@@ -50,22 +53,27 @@ export async function frameReferenceImage(dataUrl: string, aspect: AiRoomAspect)
   photo.src = dataUrl;
   await photo.decode();
   const frame = referenceFrameLayout(photo.naturalWidth, photo.naturalHeight, aspect);
-  if (!frame.needsFraming) return dataUrl;
+  if (!frame.needsFraming && !frame.needsResize) return dataUrl;
   const canvas = document.createElement("canvas");
   canvas.width = frame.width;
   canvas.height = frame.height;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Cannot prepare the image for the selected aspect ratio.");
 
-  // Blurred edge extension keeps the entire source, avoiding face cuts and black bars.
-  const cover = Math.max(frame.width / photo.naturalWidth, frame.height / photo.naturalHeight);
-  ctx.save();
-  ctx.filter = "blur(32px)";
-  ctx.drawImage(photo, (frame.width - photo.naturalWidth * cover) / 2,
-    (frame.height - photo.naturalHeight * cover) / 2,
-    photo.naturalWidth * cover, photo.naturalHeight * cover);
-  ctx.restore();
-  ctx.drawImage(photo, frame.x, frame.y, frame.fittedWidth, frame.fittedHeight);
+  // JPEG has no transparency: avoid accidental dark/black alpha backgrounds.
+  ctx.fillStyle="#ffffff";
+  ctx.fillRect(0,0,frame.width,frame.height);
+  // Blurred edge extension keeps the source completely visible with no cropping.
+  if (frame.needsFraming) {
+    const cover=Math.max(frame.width/photo.naturalWidth,frame.height/photo.naturalHeight);
+    ctx.save();
+    ctx.filter="blur(32px)";
+    ctx.drawImage(photo,(frame.width-photo.naturalWidth*cover)/2,
+      (frame.height-photo.naturalHeight*cover)/2,
+      photo.naturalWidth*cover,photo.naturalHeight*cover);
+    ctx.restore();
+  }
+  ctx.drawImage(photo,frame.x,frame.y,frame.fittedWidth,frame.fittedHeight);
 
   for (const quality of [0.9, 0.78, 0.65]) {
     const framed = canvas.toDataURL("image/jpeg", quality);
