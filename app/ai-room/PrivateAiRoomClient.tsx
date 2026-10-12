@@ -4,7 +4,7 @@ import Link from "next/link";
 import {WAN_CATALOG,WAN_MODEL_NAMES,isWanModel,type WanModel,type WanDuration,type WanQuality} from "@/lib/wan-models";
 import {estimateWanCostUsd} from "@/lib/ai-room-jobs";
 import {aspectValue,frameReferenceImage,type AiRoomAspect} from "@/lib/ai-room-framing";
-import {privateVideoSurfaces} from "@/lib/ai-room-private-views";
+import {privateVideoSurfaces,reconcilePrivateJobs} from "@/lib/ai-room-private-views";
 
 type PrivateJob={
   id:string;prompt:string;model:string;mode:string;duration:string;aspect:string;quality:string;
@@ -51,10 +51,16 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
   const activeUserRef=useRef<string|null>(null);
   const sessionEpoch=useRef(0);
   const gallerySequence=useRef(0);
+  const acceptedIds=useRef(new Set<string>());
+  const deletedIds=useRef(new Set<string>());
+  const imageSequence=useRef(0);
   const galleryRequests=useRef(new Set<AbortController>());
   const invalidateSession=useCallback(()=>{
     sessionEpoch.current+=1;
     gallerySequence.current+=1;
+    imageSequence.current+=1;
+    acceptedIds.current.clear();
+    deletedIds.current.clear();
     for(const request of galleryRequests.current)request.abort();
     galleryRequests.current.clear();
   },[]);
@@ -77,7 +83,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
       if(activeUserRef.current!==owner || epoch!==sessionEpoch.current ||
         sequence!==gallerySequence.current)return;
       if(!Array.isArray(result.jobs))throw new Error("Invalid private Gallery response.");
-      setJobs(result.jobs as PrivateJob[]);
+      setJobs(current=>reconcilePrivateJobs(result.jobs as PrivateJob[],current,acceptedIds.current,deletedIds.current));
       setJobsLoadState("ready");
       setJobsLoadError("");
     }catch(e){
@@ -167,6 +173,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
     }catch(e){setError(e instanceof Error?e.message:"Sign-out failed");}
   }
   function imageChanged(file?:File){
+    const selection=++imageSequence.current;
     setReference("");setReferenceName("");setImageConsentConfirmed(false);
     if(!file)return;
     if(!["image/jpeg","image/png","image/webp"].includes(file.type) || file.size>2_500_000){
@@ -174,8 +181,8 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
     }
     const epoch=sessionEpoch.current;
     const reader=new FileReader();
-    reader.onload=()=>{if(epoch===sessionEpoch.current && typeof reader.result==="string"){setReference(reader.result);setReferenceName(file.name);}};
-    reader.onerror=()=>{if(epoch===sessionEpoch.current)setError("Could not read reference photo");};
+    reader.onload=()=>{if(epoch===sessionEpoch.current && selection===imageSequence.current && typeof reader.result==="string"){setReference(reader.result);setReferenceName(file.name);}};
+    reader.onerror=()=>{if(epoch===sessionEpoch.current && selection===imageSequence.current)setError("Could not read reference photo");};
     reader.readAsDataURL(file);
   }
   function pickModel(value:string){
@@ -197,7 +204,12 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
         body:JSON.stringify({prompt:prompt.trim(),mode,model,duration,aspect:ratio,quality,preserveFace:mode==="image"&&preserveFace,imageUrl,contentMode,adultConfirmed:contentMode==="mature"&&adultConfirmed,imageConsentConfirmed:contentMode==="mature"&&mode==="image"&&imageConsentConfirmed})
       }));
       if(epoch!==sessionEpoch.current)return;
-      setJobs(current=>[result.job as PrivateJob,...current]);
+      const submitted=result.job as PrivateJob;
+      if(!submitted || typeof submitted.id!=="string" || !submitted.id){
+        throw new Error("Provider submission response is incomplete. Check History before retrying; do not resubmit a potentially charged request.");
+      }
+      acceptedIds.current.add(submitted.id);
+      setJobs(current=>[submitted,...current.filter(row=>row.id!==submitted.id)]);
       setPrompt("");
     }catch(e){
       if(epoch===sessionEpoch.current)setError(e instanceof Error?e.message:"Generate failed. Check Gallery before retrying.");
@@ -210,6 +222,8 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
     try{
       await asJson(await fetch("/api/ai-room/generate/"+encodeURIComponent(job.id),{method:"DELETE"}));
       if(epoch!==sessionEpoch.current)return;
+      deletedIds.current.add(job.id);
+      acceptedIds.current.delete(job.id);
       setJobs(current=>current.filter(item=>item.id!==job.id));
       setOpenJob(current=>current?.id===job.id?null:current);
     }catch(e){
