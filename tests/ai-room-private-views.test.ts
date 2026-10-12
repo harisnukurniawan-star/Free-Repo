@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {privateVideoSurfaces, type PrivateVideoSurfaceJob} from "../lib/ai-room-private-views";
+import {privateVideoSurfaces,reconcilePrivateJobs, type PrivateVideoSurfaceJob} from "../lib/ai-room-private-views";
 
 const now = "2026-10-12T00:01:00Z";
 const earlier = "2026-10-11T23:00:00Z";
@@ -53,4 +53,35 @@ test("recent shows only eight newest completed videos regardless of list order",
   assert.equal(surfaces.preview?.id,"completed-9");
   assert.deepEqual(surfaces.recent.map(j=>j.id),jobs.slice(2).reverse().map(j=>j.id));
   assert.equal(jobs[0].id,"completed-0","selection must not mutate source array");
+});
+
+test("a late Gallery response must not erase an accepted paid image-to-video job",()=>{
+  const existing=job("old-success","completed","2026-10-11T21:00:00Z","/api/ai-room/videos/old/stream");
+  const justAccepted=job("paid-image-job","queued","2026-10-12T02:00:00Z");
+  const merged=reconcilePrivateJobs([existing],[justAccepted,existing],
+    new Set(["paid-image-job"]),new Set<string>());
+  assert.deepEqual(merged.map(item=>item.id),["paid-image-job","old-success"]);
+  assert.deepEqual(privateVideoSurfaces(merged).pending.map(item=>item.id),["paid-image-job"]);
+});
+
+test("stale OCI queued status cannot overwrite a terminal provider status",()=>{
+  const local=job("image-success","completed",now,"/api/ai-room/videos/new/stream");
+  const slowRemote=job("image-success","queued",now);
+  const merged=reconcilePrivateJobs([slowRemote],[local],new Set(["image-success"]),new Set<string>());
+  assert.equal(merged[0].status,"completed");
+  assert.equal(merged[0].videoUrl,local.videoUrl);
+});
+
+test("late Gallery list cannot resurrect a successfully deleted private video",()=>{
+  const stale=job("deleted-video","completed",now,"/api/ai-room/videos/deleted/stream");
+  const merged=reconcilePrivateJobs([stale],[stale],new Set(["deleted-video"]),new Set(["deleted-video"]));
+  assert.deepEqual(merged,[]);
+});
+
+test("Gallery remains authoritative for jobs not accepted in this browser session",()=>{
+  const outdated=job("old","queued",now);
+  const saved=job("old","completed",now,"/api/ai-room/videos/old/stream");
+  const merged=reconcilePrivateJobs([saved],[outdated],new Set<string>(),new Set<string>());
+  assert.equal(merged[0].status,"completed");
+  assert.equal(merged[0].videoUrl,saved.videoUrl);
 });
