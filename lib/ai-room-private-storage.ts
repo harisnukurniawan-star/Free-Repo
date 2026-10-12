@@ -183,7 +183,7 @@ export async function privateSubmit(owner:string,body:unknown):Promise<ClientJob
 export function assertFalMediaUrl(raw:string):URL{
   let u:URL;
   try{u=new URL(raw);}catch{throw new VideoEngineError("Provider video URL is invalid.",502,false);}
-  const falMedia=/(^|\\.)fal\\.media$/.test(u.hostname) && !(u.hostname==="fal.media" && u.pathname==="/");
+  const falMedia=/(^|\.)fal\.media$/.test(u.hostname) && !(u.hostname==="fal.media" && u.pathname==="/");
   // fal.ai Wan examples also return files hosted in its falserverless GCS bucket.
   // Only that exact public provider bucket is accepted, never arbitrary GCS.
   const falStorage=u.hostname==="storage.googleapis.com" &&
