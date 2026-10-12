@@ -416,7 +416,7 @@ test("Wan 2.7 text and image payloads use duration, with image_url only for imag
   assert.equal(calls[0].url,"https://queue.fal.run/fal-ai/wan/v2.7/text-to-video");
   assert.deepEqual(calls[0].payload,{prompt:"Sunrise scene",resolution:"1080p",aspect_ratio:"16:9",duration:10});
   assert.equal(calls[1].url,"https://queue.fal.run/fal-ai/wan/v2.7/image-to-video");
-  assert.deepEqual(calls[1].payload,{prompt:"Animate this",resolution:"720p",aspect_ratio:"16:9",duration:5,image_url:"data:image/png;base64,AAAA"});
+  assert.deepEqual(calls[1].payload,{prompt:"Animate this",resolution:"720p",duration:5,image_url:"data:image/png;base64,AAAA"});
 });
 
 test("Wan 3.0 and Prime text/image payloads use start_image_url and preserve model-specific queue IDs", async t => {
@@ -511,8 +511,8 @@ test("face consistency disables prompt expansion and guides identity in all imag
     }));
   }
   assert.equal(seen.length,5);
-  for(const {body} of seen){
-    assert.equal(body.aspect_ratio,"9:16");
+  for(const [idx,{body}] of seen.entries()){
+    assert.equal(body.aspect_ratio,idx===2?undefined:"9:16");
     assert.equal(body.enable_prompt_expansion,false);
     assert.match(String(body.prompt),/same facial structure/i);
     assert.match(String(body.prompt),/do not change identity/i);
