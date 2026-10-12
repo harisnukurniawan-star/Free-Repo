@@ -483,7 +483,12 @@ test("every Wan model/mode sends each selected output ratio unchanged", async t 
           ...(mode==="image"?{imageUrl:"data:image/png;base64,AAAA"}:{}),
         }));
         const request=seen.at(-1)!;
-        assert.equal(request.body.aspect_ratio,aspect,`${model}/${mode}/${aspect}`);
+        if(model==="Wan 2.7" && mode==="image"){
+          assert.equal("aspect_ratio" in request.body,false,"Wan 2.7 I2V must use preframed source ratio");
+          assert.equal(request.body.image_url,"data:image/png;base64,AAAA");
+        }else{
+          assert.equal(request.body.aspect_ratio,aspect,`${model}/${mode}/${aspect}`);
+        }
         assert.equal(request.url,`https://queue.fal.run/${wanEndpointFor(model,mode)}`);
       }
     }
@@ -634,4 +639,30 @@ test("queued safety failure is categorized even if the provider omits error_type
   assert.equal(job.status,"failed");
   assert.match(job.error||"",/content safety policy/i);
   assert.doesNotMatch(job.error||"",/private provider text/i);
+});
+
+test("Wan 2.7 image payload matches its I2V schema, while T2V retains ratio",async t=>{
+  useFal(t);
+  const calls:Record<string,unknown>[]=[];
+  globalThis.fetch=(async (url,init)=>{
+    const body=JSON.parse(String(init?.body)) as Record<string,unknown>;
+    if(String(url).includes("/image-to-video")){
+      assert.equal("aspect_ratio" in body,false,"Wan 2.7 I2V does not accept explicit aspect_ratio");
+      assert.equal(body.image_url,"data:image/png;base64,AAAA");
+    }
+    calls.push(body);
+    return json({request_id:"provider-schema-001"});
+  }) as typeof fetch;
+  await getVideoEngine().submit(parseVideoRequest({
+    prompt:"A gentle camera pan across a landscape",model:"Wan 2.7",mode:"image",
+    aspect:"9:16",duration:"5s",quality:"720p",imageUrl:"data:image/png;base64,AAAA",
+  }));
+  await getVideoEngine().submit(parseVideoRequest({
+    prompt:"A gentle camera pan across a landscape",model:"Wan 2.7",mode:"text",
+    aspect:"9:16",duration:"5s",quality:"720p",
+  }));
+  assert.equal(calls.length,2);
+  assert.equal(calls[0].duration,5);
+  assert.equal(calls[0].resolution,"720p");
+  assert.equal(calls[1].aspect_ratio,"9:16");
 });
