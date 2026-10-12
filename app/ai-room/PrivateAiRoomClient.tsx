@@ -4,6 +4,7 @@ import Link from "next/link";
 import {WAN_CATALOG,WAN_MODEL_NAMES,isWanModel,type WanModel,type WanDuration,type WanQuality} from "@/lib/wan-models";
 import {estimateWanCostUsd} from "@/lib/ai-room-jobs";
 import {aspectValue,frameReferenceImage,type AiRoomAspect} from "@/lib/ai-room-framing";
+import {privateVideoSurfaces} from "@/lib/ai-room-private-views";
 
 type PrivateJob={
   id:string;prompt:string;model:string;mode:string;duration:string;aspect:string;quality:string;
@@ -126,6 +127,10 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
             if(epoch!==sessionEpoch.current)break;
             const update=result.job as PrivateJob;
             setJobs(current=>current.map(row=>row.id===job.id?update:row));
+            if(update.status==="failed"){
+              setError((update.error||"The provider could not complete this request.")+
+                " No video was added to Recent, Gallery, or Preview.");
+            }
           }catch(e){
             if(epoch===sessionEpoch.current)
               setError(e instanceof Error?e.message:"Status temporarily unavailable; job was not resubmitted");
@@ -211,9 +216,9 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
       if(epoch===sessionEpoch.current)setError(e instanceof Error?e.message:"Delete failed; retry safely");
     }finally{if(epoch===sessionEpoch.current)setBusy(false);}
   }
-  const completed=jobs.filter(j=>j.status==="completed");
-  const latest=completed[0];
-  const visible=view==="gallery"?completed:jobs;
+  const surfaces=useMemo(()=>privateVideoSurfaces(jobs),[jobs]);
+  const {gallery:completed,recent,pending,preview:latest,history}=surfaces;
+  const visible=view==="gallery"?completed:view==="history"?history:recent;
   const title=view==="generate"?"Create a private video":view==="gallery"?"Private Gallery":view==="history"?"Video History":"Usage & Cost";
   return <main className="control-room ai-room-route">
     <aside className="sidebar">
@@ -283,15 +288,16 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
           </aside>
         </div>}
         {view==="usage"&&<section className="queue card"><h2>Usage</h2>
-          <p>{jobsLoadState==="ready"?`${jobs.length} saved jobs · ${completed.length} completed.`:"Video inventory is not available until storage responds successfully."} Cost estimates are not billing statements.</p>
+          <p>{jobsLoadState==="ready"?`${jobs.length} submitted attempts · ${completed.length} completed videos.`:"Video inventory is not available until storage responds successfully."} Cost estimates are not billing statements.</p>
           <p>Videos remain in OCI until you delete them. Your daily generation limit is configured by the operator.</p>
         </section>}
+        {view==="generate"&&pending.length>0&&<div className="info-banner" role="status">{pending.length} submitted video {pending.length===1?"job is":"jobs are"} still processing. Status is tracked in History; only successful videos appear in Recent, Gallery and Preview.</div>}
         {(view==="gallery"||view==="history"||view==="generate")&&<section className="queue card">
           <div className="section-head"><div><span className="kicker">PRIVATE STORAGE</span><h2>{view==="gallery"?"Completed videos":view==="history"?"Generation history":"Recent generations"}</h2></div><span>{jobsLoadState==="ready"?visible.length+" jobs":jobsLoadState==="error"?"Unavailable":"Loading…"}</span></div>
           {jobsLoadState==="error"?<div className="error-banner" role="alert">Unable to load your private videos: {jobsLoadError}. Your saved videos have not been deleted. <button type="button" onClick={()=>{if(user)void loadJobs(user).catch(()=>{});}}>Retry loading</button></div>:
           jobsLoadState!=="ready"?<div className="empty" role="status">Loading private videos from OCI…</div>:
           visible.length===0?<div className="empty">No saved videos here yet.</div>:
-          <div className={view==="gallery"?"gallery-grid":""}>{(view==="generate"?visible.slice(0,8):visible).map(job=>
+          <div className={view==="gallery"?"gallery-grid":""}>{visible.map(job=>
             <article className={view==="gallery"?"gallery-item":"job"} key={job.id}>
               {job.videoUrl&&view==="gallery"?<video src={job.videoUrl} controls playsInline style={{aspectRatio:aspectValue(job.aspect)}}/>:<div className="thumb">✦</div>}
               <div><strong>{job.prompt}</strong><span>{job.model} · {job.duration} · {job.aspect} · {job.status}{job.contentMode==="mature"?" · Mature 18+ non-explicit":""}</span>
