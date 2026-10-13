@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {scryptSync} from "node:crypto";
-import {makeSession,readSession,verifyPassword,requirePrivateUser,requireSameOrigin,SESSION_COOKIE,privateVideoEnabled} from "../lib/ai-room-private-auth";
+import {makeSession,readSession,verifyPassword,requirePrivateUser,requireSameOrigin,SESSION_COOKIE,privateVideoEnabled,privateVideoConfigured,productionOciReleaseApproved} from "../lib/ai-room-private-auth";
 import {assertFalMediaUrl} from "../lib/ai-room-private-storage";
 import {VideoEngineError} from "../lib/video-engine";
 
@@ -59,9 +59,14 @@ test("unsigned and cross-origin private APIs fail before provider calls",async t
 });
 test("remote media host must be a real HTTPS fal.media domain",()=>{
   assert.equal(assertFalMediaUrl("https://v3.fal.media/files/video.mp4").hostname,"v3.fal.media");
+  assert.equal(assertFalMediaUrl("https://storage.googleapis.com/falserverless/model_tests/wan/movie.mp4").pathname,
+    "/falserverless/model_tests/wan/movie.mp4");
   for(const url of ["http://v3.fal.media/files/a.mp4","https://fal.media.evil.test/a.mp4",
     "https://127.0.0.1/private","https://user@v3.fal.media/a.mp4",
-    "https://evil-fal.media/a.mp4","https://v3.fal.media:8443/a.mp4"]){
+    "https://evil-fal.media/a.mp4","https://v3.fal.media:8443/a.mp4",
+    "https://storage.googleapis.com/private-user-uploads/a.mp4",
+    "https://storage.googleapis.com/falserverless.evil/a.mp4",
+    "https://storage.googleapis.com/falserverless/"]){
     assert.throws(()=>assertFalMediaUrl(url),VideoEngineError,url);
   }
 });
@@ -112,4 +117,41 @@ test("unapproved private owner cannot submit Mature before chargeable provider c
     contentMode:"mature",adultConfirmed:true
   }),(e:unknown)=>e instanceof VideoEngineError&&e.httpStatus===403);
   assert.equal(calls,0);
+});
+
+
+test("OCI production cutover is locked until deliberate approval and native driver",t=>{
+  environment(t);
+  for(const key of ["VERCEL_ENV","AI_ROOM_OCI_PRODUCTION_APPROVED","AI_ROOM_OCI_DRIVER"]){
+    const before=process.env[key];
+    t.after(()=>{if(before===undefined)delete process.env[key];else process.env[key]=before;});
+  }
+  process.env.VERCEL_ENV="production";
+  delete process.env.AI_ROOM_OCI_PRODUCTION_APPROVED;
+  assert.equal(productionOciReleaseApproved(),false);
+  assert.equal(privateVideoConfigured(),false);
+  process.env.AI_ROOM_OCI_PRODUCTION_APPROVED="true";
+  assert.equal(productionOciReleaseApproved(),false,"S3 compatibility cannot silently become the native production driver");
+  process.env.AI_ROOM_OCI_DRIVER="native";
+  assert.equal(productionOciReleaseApproved(),false,
+    "Production cannot point to the Preview bucket, even with operator approval");
+  assert.equal(privateVideoConfigured(),false);
+  process.env.AI_ROOM_OCI_BUCKET="ai-room-private-videos-prod";
+  assert.equal(productionOciReleaseApproved(),true);
+  // Still fail closed: production needs its own actual native API credentials.
+  assert.equal(privateVideoConfigured(),false);
+});
+
+test("OCI private mode rejects empty or malformed user account configurations",t=>{
+  environment(t);
+  const originalEnv=process.env.VERCEL_ENV;
+  t.after(()=>{if(originalEnv===undefined)delete process.env.VERCEL_ENV;else process.env.VERCEL_ENV=originalEnv;});
+  process.env.VERCEL_ENV="preview";
+  assert.equal(privateVideoConfigured(),true);
+  process.env.AI_ROOM_USERS_JSON="[]";
+  assert.equal(privateVideoConfigured(),false);
+  process.env.AI_ROOM_USERS_JSON="{";
+  assert.equal(privateVideoConfigured(),false);
+  process.env.AI_ROOM_USERS_JSON=JSON.stringify([{id:"bad id",salt:"aa".repeat(16),passwordHash:"bb".repeat(64)}]);
+  assert.equal(privateVideoConfigured(),false);
 });

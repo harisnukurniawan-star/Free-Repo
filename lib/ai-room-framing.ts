@@ -39,7 +39,19 @@ export function referenceFrameLayout(width: number, height: number, aspect: AiRo
     x: (size.width - fittedWidth) / 2,
     y: (size.height - fittedHeight) / 2,
     needsFraming: Math.abs(width / height / ASPECTS[aspect] - 1) >= 0.015,
+    // A small compressed upload can still contain a huge decoded frame.
+    // Normalize only oversized sources; retain original resolution otherwise.
+    needsResize: Math.max(width,height)>1920,
   };
+}
+
+// Re-encode large same-ratio images before the paid API request. A multi-MB
+// inline PNG/WebP/JPEG can otherwise use most of the request body budget and
+// increase transport latency, even when its dimensions already match.
+export function referenceNeedsNormalization(
+  frame: ReturnType<typeof referenceFrameLayout>, sourceCharacters: number,
+): boolean {
+  return frame.needsFraming || frame.needsResize || sourceCharacters > 900_000;
 }
 
 /** Keep the original photograph completely visible in the selected canvas ratio.
@@ -50,26 +62,35 @@ export async function frameReferenceImage(dataUrl: string, aspect: AiRoomAspect)
   photo.src = dataUrl;
   await photo.decode();
   const frame = referenceFrameLayout(photo.naturalWidth, photo.naturalHeight, aspect);
-  if (!frame.needsFraming) return dataUrl;
+  if (!referenceNeedsNormalization(frame, dataUrl.length)) return dataUrl;
+  const geometryRequired = frame.needsFraming || frame.needsResize;
   const canvas = document.createElement("canvas");
   canvas.width = frame.width;
   canvas.height = frame.height;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Cannot prepare the image for the selected aspect ratio.");
 
-  // Blurred edge extension keeps the entire source, avoiding face cuts and black bars.
-  const cover = Math.max(frame.width / photo.naturalWidth, frame.height / photo.naturalHeight);
-  ctx.save();
-  ctx.filter = "blur(32px)";
-  ctx.drawImage(photo, (frame.width - photo.naturalWidth * cover) / 2,
-    (frame.height - photo.naturalHeight * cover) / 2,
-    photo.naturalWidth * cover, photo.naturalHeight * cover);
-  ctx.restore();
-  ctx.drawImage(photo, frame.x, frame.y, frame.fittedWidth, frame.fittedHeight);
+  // JPEG has no transparency: avoid accidental dark/black alpha backgrounds.
+  ctx.fillStyle="#ffffff";
+  ctx.fillRect(0,0,frame.width,frame.height);
+  // Blurred edge extension keeps the source completely visible with no cropping.
+  if (frame.needsFraming) {
+    const cover=Math.max(frame.width/photo.naturalWidth,frame.height/photo.naturalHeight);
+    ctx.save();
+    ctx.filter="blur(32px)";
+    ctx.drawImage(photo,(frame.width-photo.naturalWidth*cover)/2,
+      (frame.height-photo.naturalHeight*cover)/2,
+      photo.naturalWidth*cover,photo.naturalHeight*cover);
+    ctx.restore();
+  }
+  ctx.drawImage(photo,frame.x,frame.y,frame.fittedWidth,frame.fittedHeight);
 
   for (const quality of [0.9, 0.78, 0.65]) {
     const framed = canvas.toDataURL("image/jpeg", quality);
+    // For already-correct geometry, never enlarge a reference just to re-encode it.
+    if (!geometryRequired && framed.length >= dataUrl.length) continue;
     if (framed.length <= 3_500_000) return framed;
   }
+  if (!geometryRequired && dataUrl.length <= 3_500_000) return dataUrl;
   throw new Error("The framed reference image is too large. Use a smaller reference photo.");
 }

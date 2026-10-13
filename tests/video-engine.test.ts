@@ -416,7 +416,7 @@ test("Wan 2.7 text and image payloads use duration, with image_url only for imag
   assert.equal(calls[0].url,"https://queue.fal.run/fal-ai/wan/v2.7/text-to-video");
   assert.deepEqual(calls[0].payload,{prompt:"Sunrise scene",resolution:"1080p",aspect_ratio:"16:9",duration:10});
   assert.equal(calls[1].url,"https://queue.fal.run/fal-ai/wan/v2.7/image-to-video");
-  assert.deepEqual(calls[1].payload,{prompt:"Animate this",resolution:"720p",aspect_ratio:"16:9",duration:5,image_url:"data:image/png;base64,AAAA"});
+  assert.deepEqual(calls[1].payload,{prompt:"Animate this",resolution:"720p",duration:5,image_url:"data:image/png;base64,AAAA"});
 });
 
 test("Wan 3.0 and Prime text/image payloads use start_image_url and preserve model-specific queue IDs", async t => {
@@ -483,7 +483,12 @@ test("every Wan model/mode sends each selected output ratio unchanged", async t 
           ...(mode==="image"?{imageUrl:"data:image/png;base64,AAAA"}:{}),
         }));
         const request=seen.at(-1)!;
-        assert.equal(request.body.aspect_ratio,aspect,`${model}/${mode}/${aspect}`);
+        if(model==="Wan 2.7" && mode==="image"){
+          assert.equal("aspect_ratio" in request.body,false,"Wan 2.7 I2V must use preframed source ratio");
+          assert.equal(request.body.image_url,"data:image/png;base64,AAAA");
+        }else{
+          assert.equal(request.body.aspect_ratio,aspect,`${model}/${mode}/${aspect}`);
+        }
         assert.equal(request.url,`https://queue.fal.run/${wanEndpointFor(model,mode)}`);
       }
     }
@@ -506,8 +511,8 @@ test("face consistency disables prompt expansion and guides identity in all imag
     }));
   }
   assert.equal(seen.length,5);
-  for(const {body} of seen){
-    assert.equal(body.aspect_ratio,"9:16");
+  for(const [idx,{body}] of seen.entries()){
+    assert.equal(body.aspect_ratio,idx===2?undefined:"9:16");
     assert.equal(body.enable_prompt_expansion,false);
     assert.match(String(body.prompt),/same facial structure/i);
     assert.match(String(body.prompt),/do not change identity/i);
@@ -531,4 +536,173 @@ test("completed jobs return true provider video dimensions for ratio verificatio
   assert.equal(result.videoWidth,1080);
   assert.equal(result.videoHeight,1920);
   assert.equal(result.status,"completed");
+});
+
+
+test("queue failure preserves safe policy classification, not provider text", async ctx => {
+  useFal(ctx);
+  globalThis.fetch = (async () => json({
+    status: "COMPLETED",
+    request_id: "policy123",
+    error_type: "CONTENT_POLICY",
+    error: "Do not show this raw message",
+  })) as typeof fetch;
+  const result = await getVideoEngine().status("fast:text:policy123");
+  assert.equal(result.status, "failed");
+  assert.match(result.error || "", /provider blocked/i);
+  assert.doesNotMatch(result.error || "", /raw message/i);
+});
+
+test("unknown queue failure avoids a misleading policy diagnosis", async ctx => {
+  useFal(ctx);
+  globalThis.fetch = (async () => json({
+    status: "FAILED", request_id: "unknown123",
+    error: "Unknown model infrastructure issue",
+  })) as typeof fetch;
+  const result = await getVideoEngine().status("fast:text:unknown123");
+  assert.equal(result.status, "failed");
+  assert.match(result.error || "", /without a specific reason/i);
+  assert.doesNotMatch(result.error || "", /blocked/i);
+});
+
+test("provider HTTP 422 error is categorized without replaying paid submit", async ctx => {
+  useFal(ctx);
+  let posts = 0;
+  globalThis.fetch = (async (_input, init) => {
+    if (init?.method === "POST") posts++;
+    return json({error_type: "VALIDATION_ERROR", detail: "Private detail must not appear"}, 422);
+  }) as typeof fetch;
+  await assert.rejects(
+    () => getVideoEngine().submit(parseVideoRequest({
+      prompt: "A cinematic city at sunset",
+      mode: "text", model: "Wan 2.2 Fast", duration: "5s",
+      aspect: "16:9", quality: "720p",
+    })),
+    (err: unknown) => {
+      assert.ok(err instanceof VideoEngineError);
+      assert.equal(err.httpStatus, 422);
+      assert.equal(err.retryable, false);
+      assert.match(err.message, /invalid input/i);
+      assert.doesNotMatch(err.message, /Private detail/i);
+      return true;
+    },
+  );
+  assert.equal(posts, 1);
+});
+
+
+test("provider safety rejection is classified from its message without leaking raw detail", async ctx => {
+  useFal(ctx);
+  let posts=0;
+  globalThis.fetch=(async (_url, init)=>{
+    if(init?.method==="POST")posts++;
+    return json({ detail: "The safety checker flagged the input as NSFW. Private image must stay hidden." }, 422);
+  }) as typeof fetch;
+  await assert.rejects(()=>getVideoEngine().submit(parseVideoRequest({
+    prompt:"A romantic candlelit ballroom with consenting adult dancers",
+    mode:"image",imageUrl:"data:image/png;base64,AAAA",model:"Wan 2.2 Fast",
+    duration:"5s",quality:"720p",aspect:"16:9",contentMode:"standard",
+  })),(err:unknown)=>{
+    assert.ok(err instanceof VideoEngineError);
+    assert.equal(err.httpStatus,422);
+    assert.match(err.message,/content safety policy/i);
+    assert.doesNotMatch(err.message,/Private image/i);
+    return true;
+  });
+  assert.equal(posts,1);
+});
+
+test("provider reference image validation is classified from structured detail fields", async ctx => {
+  useFal(ctx);
+  globalThis.fetch=(async()=>json({
+    detail:[{loc:["body","image_url"],msg:"Invalid image format",type:"value_error"}],
+  },422)) as typeof fetch;
+  await assert.rejects(()=>getVideoEngine().submit(parseVideoRequest({
+    prompt:"A cinematic portrait in warm natural light",
+    mode:"image",imageUrl:"data:image/jpeg;base64,AAAA",model:"Wan 2.2 Fast",
+    duration:"5s",quality:"720p",aspect:"16:9",contentMode:"standard",
+  })),(err:unknown)=>{
+    assert.ok(err instanceof VideoEngineError);
+    assert.match(err.message,/reference image/i);
+    assert.doesNotMatch(err.message,/image_url|value_error/i);
+    return true;
+  });
+});
+
+test("queued safety failure is categorized even if the provider omits error_type", async ctx => {
+  useFal(ctx);
+  globalThis.fetch=(async()=>json({
+    status:"FAILED",request_id:"nsfw123",
+    error:{message:"Input was rejected by safety checker: private provider text"},
+  })) as typeof fetch;
+  const job=await getVideoEngine().status("fast:image:nsfw123");
+  assert.equal(job.status,"failed");
+  assert.match(job.error||"",/content safety policy/i);
+  assert.doesNotMatch(job.error||"",/private provider text/i);
+});
+
+test("Wan 2.7 image payload matches its I2V schema, while T2V retains ratio",async t=>{
+  useFal(t);
+  const calls:Record<string,unknown>[]=[];
+  globalThis.fetch=(async (url,init)=>{
+    const body=JSON.parse(String(init?.body)) as Record<string,unknown>;
+    if(String(url).includes("/image-to-video")){
+      assert.equal("aspect_ratio" in body,false,"Wan 2.7 I2V does not accept explicit aspect_ratio");
+      assert.equal(body.image_url,"data:image/png;base64,AAAA");
+    }
+    calls.push(body);
+    return json({request_id:"provider-schema-001"});
+  }) as typeof fetch;
+  await getVideoEngine().submit(parseVideoRequest({
+    prompt:"A gentle camera pan across a landscape",model:"Wan 2.7",mode:"image",
+    aspect:"9:16",duration:"5s",quality:"720p",imageUrl:"data:image/png;base64,AAAA",
+  }));
+  await getVideoEngine().submit(parseVideoRequest({
+    prompt:"A gentle camera pan across a landscape",model:"Wan 2.7",mode:"text",
+    aspect:"9:16",duration:"5s",quality:"720p",
+  }));
+  assert.equal(calls.length,2);
+  assert.equal(calls[0].duration,5);
+  assert.equal(calls[0].resolution,"720p");
+  assert.equal(calls[1].aspect_ratio,"9:16");
+});
+
+test("provider 403 content-safety refusal is labeled correctly without raw error disclosure",async t=>{
+  useFal(t);
+  let posts=0;
+  globalThis.fetch=(async (_input,init)=>{
+    if((init?.method??"GET")==="POST")posts++;
+    return json({detail:"content safety check: disallowed content in reference image"},403);
+  }) as typeof fetch;
+  await assert.rejects(
+    ()=>getVideoEngine().submit(parseVideoRequest({
+      prompt:"Two consenting adults walking along a beach at sunset",
+      mode:"image",model:"Wan 2.2 Fast",duration:"5s",aspect:"16:9",quality:"720p",
+      imageUrl:"data:image/png;base64,AAAA",
+    })),
+    (error:unknown)=>{
+      assert.ok(error instanceof VideoEngineError);
+      assert.equal(error.httpStatus,422);
+      assert.equal(error.retryable,false);
+      assert.match(error.message,/content safety policy/i);
+      assert.doesNotMatch(error.message,/disallowed content in reference image/i);
+      return true;
+    });
+  assert.equal(posts,1,"rejected paid I2V submission must not be replayed");
+});
+
+test("unknown provider 403 remains authentication/config error, never a policy guess",async t=>{
+  useFal(t);
+  globalThis.fetch=(async ()=>json({detail:"API credentials denied"},403)) as typeof fetch;
+  await assert.rejects(
+    ()=>getVideoEngine().submit(parseVideoRequest({
+      prompt:"A cinematic sunrise on a quiet mountain",
+      mode:"text",model:"Wan 2.2 Fast",duration:"5s",aspect:"16:9",quality:"720p",
+    })),
+    (error:unknown)=>{
+      assert.ok(error instanceof VideoEngineError);
+      assert.equal(error.httpStatus,503);
+      assert.match(error.message,/authentication failed/i);
+      return true;
+    });
 });

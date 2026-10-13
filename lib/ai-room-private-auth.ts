@@ -11,11 +11,26 @@ type UserRecord = {id:string;salt:string;passwordHash:string};
 export function privateVideoEnabled(): boolean {
   return process.env.AI_ROOM_STORAGE_MODE === "oci";
 }
+/** Fail closed if Production is accidentally pointed at the Preview bucket.
+ * Namespace may be shared by an OCI tenancy; bucket and signing identity must
+ * remain separated, and the signer must be provisioned independently. */
+export const PRODUCTION_OCI_BUCKET="ai-room-private-videos-prod";
+export function productionOciReleaseApproved():boolean {
+  return process.env.VERCEL_ENV!=="production" ||
+    (process.env.AI_ROOM_OCI_PRODUCTION_APPROVED==="true" &&
+      nativeStorageEnabled() &&
+      process.env.AI_ROOM_OCI_BUCKET===PRODUCTION_OCI_BUCKET);
+}
+function privateAccountsConfigured():boolean {
+  try { return users().length>0; }
+  catch { return false; }
+}
 export function privateVideoConfigured(): boolean {
   return Boolean(
+    productionOciReleaseApproved() &&
     process.env.AI_ROOM_SESSION_SECRET && process.env.AI_ROOM_SESSION_SECRET.length >= 32 &&
     process.env.AI_ROOM_OCI_BUCKET_PRIVACY_VERIFIED === "true" &&
-    process.env.AI_ROOM_USERS_JSON &&
+    privateAccountsConfigured() &&
     process.env.AI_ROOM_OCI_NAMESPACE && process.env.AI_ROOM_OCI_BUCKET &&
     (nativeStorageEnabled()?nativeCredentialsConfigured():
       (process.env.AI_ROOM_OCI_ACCESS_KEY_ID && process.env.AI_ROOM_OCI_SECRET_ACCESS_KEY))

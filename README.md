@@ -58,6 +58,8 @@ This single shared key is intended only for a private/small-team app. For a publ
 
 ## Private videos on OCI Batam (staged / opt-in)
 
+**Production deployment checklist:** see [AI ROOM OCI Production runbook](docs/AI_ROOM_OCI_PRODUCTION_RUNBOOK.md). Production requires a separate native API key and bucket, valid accounts, and `AI_ROOM_OCI_PRODUCTION_APPROVED=true` before switching `AI_ROOM_STORAGE_MODE=oci`. Do not copy Preview secrets to Production.
+
 **Production remains on the existing browser mode until an administrator provisions OCI and explicitly sets `AI_ROOM_STORAGE_MODE=oci`.** This branch does not create a bucket or modify existing customer videos. Do not enable it before testing with a non-sensitive sample. OCI Object Storage has no automatic expiration configured by this code; users retain their files until Delete.
 
 1. Create a **private** Object Storage bucket named `ai-room-private-videos` in **ap-batam-1**. Block all public bucket access and avoid bucket/object lifecycle expiry policies. Keep the bucket in the correct OCI compartment; verify it is accessible to the chosen IAM user. OCI encrypts objects at rest by default.

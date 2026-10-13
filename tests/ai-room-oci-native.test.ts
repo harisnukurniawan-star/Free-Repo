@@ -4,10 +4,12 @@ import {Readable} from "node:stream";
 import {scryptSync} from "node:crypto";
 import {makeSession,SESSION_COOKIE} from "../lib/ai-room-private-auth";
 import {
-  NativeObjectStore,nativeCredentialsConfigured,nativeObjectName,normalizeOciId,privateVideoPath
+  NativeObjectStore,nativeCredentialsConfigured,nativeObjectName,normalizeOciId,privateVideoPath,
+  classifyNativeFailure,nativeError,retryTransientOciList
 } from "../lib/ai-room-native-objects";
 import {privateDelete,privateReadNative} from "../lib/ai-room-private-storage";
 import {VideoEngineError} from "../lib/video-engine";
+import {isOciSdkRetryWarning,withPrivateOciLogs} from "../lib/ai-room-oci-safe-logger";
 
 const id="fast:text:nativevideo_001";
 const vars=[
@@ -22,7 +24,10 @@ function fixture(t:import("node:test").TestContext){
     AI_ROOM_STORAGE_MODE:"oci",AI_ROOM_OCI_DRIVER:"native",
     AI_ROOM_OCI_BUCKET_PRIVACY_VERIFIED:"true",AI_ROOM_OCI_NAMESPACE:"axf1xcjq8gsy",
     AI_ROOM_OCI_BUCKET:"ai-room-private-videos",AI_ROOM_SESSION_SECRET:"q".repeat(64),
-    AI_ROOM_USERS_JSON:"[]",
+    AI_ROOM_USERS_JSON:JSON.stringify([
+      {id:"alice",salt:"aa".repeat(16),passwordHash:"bb".repeat(64)},
+      {id:"bobby",salt:"aa".repeat(16),passwordHash:"cc".repeat(64)}
+    ]),
     AI_ROOM_OCI_TENANCY_ID:"ocid1.tenancy.oc1..example",AI_ROOM_OCI_USER_ID:"ocid1.user.oc1..example",
     AI_ROOM_OCI_KEY_FINGERPRINT:Array(16).fill("aa").join(":"),
     AI_ROOM_OCI_PRIVATE_KEY:"-----BEGIN RSA PRIVATE KEY-----\nTEST-ONLY-NOT-A-REAL-KEY\n-----END RSA PRIVATE KEY-----"
@@ -278,4 +283,112 @@ test("OCI signing IDs normalize hidden CRLF and control characters without chang
   assert.equal(nativeCredentialsConfigured(),true);
   process.env.AI_ROOM_OCI_USER_ID=user+"bad!header";
   assert.equal(nativeCredentialsConfigured(),false);
+});
+
+
+test("OCI native failure categories distinguish authorization, transport and unknown causes",()=>{
+  assert.deepEqual(classifyNativeFailure({statusCode:403,message:"PRIVATE-SECRET-NEVER-LOG"}),{
+    status:403,category:"auth_or_policy"
+  });
+  assert.deepEqual(classifyNativeFailure({statusCode:401,code:"NotAuthenticated"}),{
+    status:401,category:"auth_or_policy"
+  });
+  assert.deepEqual(classifyNativeFailure({statusCode:404,code:"NotFound"}),{
+    status:404,category:"not_found"
+  });
+  assert.deepEqual(classifyNativeFailure({code:"unavailable",message:"Signing key unknown"}),{
+    status:null,category:"network_or_signing"
+  });
+  assert.deepEqual(classifyNativeFailure({statusCode:503}),{
+    status:503,category:"oci_service"
+  });
+  assert.deepEqual(classifyNativeFailure(new Error("Unknown exception")),{
+    status:null,category:"unclassified"
+  });
+});
+
+test("OCI native operator logs contain no raw SDK error message or private object key",()=>{
+  const old=console.warn;
+  const lines:string[]=[];
+  console.warn=(...args:unknown[])=>{lines.push(args.map(String).join(" "));};
+  try{
+    assert.throws(()=>nativeError({
+      statusCode:403,
+      code:"NotAuthenticated",
+      message:"SECRET Authorization=abc",
+      requestEndpoint:"https://objectstorage.example/private-videos/alice"
+    },"list"),VideoEngineError);
+  }finally{console.warn=old;}
+  assert.equal(lines.length,1);
+  assert.match(lines[0],/AI_ROOM_OCI_NATIVE_FAILURE/);
+  assert.match(lines[0],/auth_or_policy/);
+  assert.match(lines[0],/"operation":"list"/);
+  assert.doesNotMatch(lines[0],/SECRET|Authorization|private-videos|alice/);
+});
+
+
+test("missing OCI bucket on list never masquerades as an absent video object",()=>{
+  const warn=console.warn;
+  console.warn=()=>{};
+  try{
+    assert.throws(()=>nativeError({statusCode:404,code:"NotFound"},"list"),(e:unknown)=>
+      e instanceof VideoEngineError && e.httpStatus===503);
+    assert.throws(()=>nativeError({statusCode:404,code:"NotFound"},"head"),(e:unknown)=>
+      e instanceof Error && e.name==="NotFound");
+  }finally{console.warn=warn;}
+});
+
+
+test("SDK retry log guard hides only scoped OCI retry warnings and preserves unrelated logs",async()=>{
+  assert.equal(isOciSdkRetryWarning(["Request cannot be retried. Not Retrying. Exception occurred : owner key"]),true);
+  assert.equal(isOciSdkRetryWarning(["All retry attempts have exhausted. owner key"]),true);
+  assert.equal(isOciSdkRetryWarning(["Request failed with Exception : owner key"]),true);
+  assert.equal(isOciSdkRetryWarning(["AI_ROOM_OCI_NATIVE_FAILURE"]),false);
+  const originalWarn=console.warn;
+  const lines:string[]=[];
+  console.warn=(...args:unknown[])=>{lines.push(args.map(String).join(" "));};
+  try{
+    await withPrivateOciLogs(async()=>{
+      await Promise.resolve();
+      console.warn("Request cannot be retried. Not Retrying. Exception occurred : jobs/alice/secret.json");
+      console.warn("All retry attempts have exhausted. jobs/alice/secret.json");
+      console.warn("Request failed with Exception : jobs/alice/secret.json");
+      console.warn("AI_ROOM_OCI_NATIVE_FAILURE",JSON.stringify({operation:"list",category:"auth_or_policy"}));
+    });
+    console.warn("Outside-OCI warning");
+    console.warn("Request cannot be retried. Not Retrying. Exception occurred : unrelated");
+    assert.equal(lines.length,3);
+    assert.match(lines[0],/AI_ROOM_OCI_NATIVE_FAILURE/);
+    assert.match(lines[1],/Outside-OCI warning/);
+    assert.match(lines[2],/unrelated/);
+    assert.ok(lines.every(line=>!line.includes("jobs/alice/secret.json")));
+  }finally{
+    console.warn=originalWarn;
+  }
+});
+
+test("OCI Gallery transient list failure gets one bounded read-only retry",async()=>{
+  let attempts=0,waits=0;
+  const result=await retryTransientOciList(async()=>{
+    attempts+=1;
+    if(attempts===1)throw {statusCode:503,code:"ServiceUnavailable"};
+    return {Contents:[{Key:"jobs/alice/safe.json"}],KeyCount:1};
+  },async()=>{waits+=1;});
+  assert.equal(attempts,2);
+  assert.equal(waits,1);
+  assert.equal(result.KeyCount,1);
+});
+
+test("OCI inventory never retries permission problems or absent buckets",async()=>{
+  for(const statusCode of [403,404]){
+    let attempts=0;
+    await assert.rejects(()=>retryTransientOciList(async()=>{attempts++;throw {statusCode};},async()=>{}));
+    assert.equal(attempts,1,"HTTP "+statusCode+" must not be silently retried");
+  }
+});
+
+test("OCI inventory retry is capped at two attempts",async()=>{
+  let attempts=0;
+  await assert.rejects(()=>retryTransientOciList(async()=>{attempts++;throw {code:"ECONNRESET"};},async()=>{}));
+  assert.equal(attempts,2);
 });

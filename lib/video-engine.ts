@@ -16,6 +16,7 @@ export type VideoRequest = {
   preserveFace?: boolean;
   contentMode: AiRoomContentMode;
   adultConfirmed: boolean;
+  imageConsentConfirmed: boolean;
 };
 export type VideoJob = {
   id: string;
@@ -25,6 +26,7 @@ export type VideoJob = {
   videoUrl?: string;
   videoWidth?: number;
   videoHeight?: number;
+  error?: string;
 };
 export interface VideoEngine {
   name: string;
@@ -73,12 +75,18 @@ export function parseVideoRequest(value: unknown): VideoRequest {
     throw new VideoEngineError("Invalid adult confirmation.", 400, false);
   }
   const adultConfirmed = body.adultConfirmed === true;
+  if (body.imageConsentConfirmed !== undefined && typeof body.imageConsentConfirmed !== "boolean") {
+    throw new VideoEngineError("Invalid image consent confirmation.", 400, false);
+  }
+  const imageConsentConfirmed = body.imageConsentConfirmed === true;
   const policyFailure = contentPolicyRejection(body.prompt);
   if (policyFailure) throw new VideoEngineError(policyFailure, 422, false);
   if (contentMode === "mature") {
     if (!matureContentModeEnabled()) throw new VideoEngineError("Mature content mode is disabled by the server administrator.", 403, false);
     if (!adultConfirmed) throw new VideoEngineError("Confirm you are 18 or older to use mature content mode.", 403, false);
-    if (mode === "image") throw new VideoEngineError("Mature image-to-video is unavailable until age, identity and image-consent checks are implemented.", 403, false);
+    if (mode === "image" && !imageConsentConfirmed) {
+      throw new VideoEngineError("Mature image-to-video requires confirmation that every depicted person is an adult and has given permission to use their likeness.", 403, false);
+    }
   }
   const model = body.model === undefined ? WAN_MODEL_NAMES[0] : body.model;
   if (!isWanModel(model)) throw new VideoEngineError("Unsupported model.", 400, false);
@@ -108,7 +116,7 @@ export function parseVideoRequest(value: unknown): VideoRequest {
     throw new VideoEngineError("Invalid preserve face setting.", 400, false);
   }
   const preserveFace = mode === "image" && body.preserveFace === true;
-  return { prompt: body.prompt.trim(), mode, model, duration, aspect, quality, imageUrl, preserveFace, contentMode, adultConfirmed };
+  return { prompt: body.prompt.trim(), mode, model, duration, aspect, quality, imageUrl, preserveFace, contentMode, adultConfirmed, imageConsentConfirmed };
 }
 
 function parseJobId(id: string) {
@@ -123,7 +131,57 @@ function parseJobId(id: string) {
   return { endpoint: ENDPOINTS[tier as Tier][mode], requestId };
 }
 
-function providerHttpError(status: number): VideoEngineError {
+const PROVIDER_SAFETY_REJECTION =
+  "The provider blocked this request or reference image under its content safety policy.";
+
+/** Report a safe failure category without revealing raw provider responses. */
+function providerFailureReason(result: unknown): string {
+  // Inspect only known provider error fields and never echo their raw contents.
+  // fal can send errors as strings, typed objects or FastAPI-style detail arrays.
+  const hints: string[] = [];
+  const collect = (value: unknown, depth: number): void => {
+    if (hints.length >= 12 || depth > 3) return;
+    if (typeof value === "string") {
+      hints.push(value.slice(0, 350));
+    } else if (Array.isArray(value)) {
+      for (const item of value.slice(0, 5)) collect(item, depth + 1);
+    } else if (value && typeof value === "object") {
+      const fields = value as Record<string, unknown>;
+      for (const field of ["error_type", "code", "type", "error", "detail", "message", "msg", "errors", "loc"]) {
+        if (field in fields) collect(fields[field], depth + 1);
+      }
+    }
+  };
+  collect(result, 0);
+  const hint = hints.join(" ").toLowerCase();
+
+  if (/(?:moderation|content[_ -]?policy|safety[_ -]?check|nsfw|prohibited[_ -]?content|explicit[_ -]?content)/.test(hint)) {
+    return PROVIDER_SAFETY_REJECTION;
+  }
+  if (/(?:image|reference|base64|data[_ -]?uri|mime|file[_ -]?type|file[_ -]?format)/.test(hint) &&
+      /(?:invalid|unsupported|malformed|unreadable|too large|decode|failed to load|missing|required|not found)/.test(hint)) {
+    return "The provider could not accept the reference image. Check its format, size and readability.";
+  }
+  if (/(?:validation|invalid[_ -]?input|invalid[_ -]?parameter|schema|unprocessable|unexpected[_ -]?field|value[_ -]?error)/.test(hint)) {
+    return "The provider rejected a model setting or invalid input. Review the selected model, ratio, quality and duration.";
+  }
+  if (/(?:insufficient[_ -]?credit|billing|balance|quota[_ -]?exceeded|payment[_ -]?required)/.test(hint)) {
+    return "The provider reported a credit, billing or quota restriction.";
+  }
+  if (/(?:out[_ -]?of[_ -]?memory|overloaded|internal[_ -]?server|capacity|temporarily unavailable|timeout|timed out)/.test(hint)) {
+    return "The provider failed during processing. Check History before considering another paid generation.";
+  }
+  return "The provider reported a failed generation without a specific reason. Check History before retrying; the provider did not identify a safe failure category.";
+}
+
+function providerHttpError(status: number, detail?: unknown): VideoEngineError {
+  // Some endpoints use HTTP 403 for content policy rather than API key failure.
+  // Classify only recognized safety reasons; all unknown 403 responses remain
+  // authentication/configuration failures instead of exposing provider text.
+  if (status === 403 && detail !== undefined &&
+      providerFailureReason(detail) === PROVIDER_SAFETY_REJECTION) {
+    return new VideoEngineError(PROVIDER_SAFETY_REJECTION, 422, false);
+  }
   if (status === 401 || status === 403) {
     return new VideoEngineError("Video provider authentication failed. Check the server configuration.", 503, false);
   }
@@ -134,7 +192,9 @@ function providerHttpError(status: number): VideoEngineError {
   if (status === 408 || status === 504) return new VideoEngineError("Video provider timed out. Please try again shortly.", 504, true);
   if (status >= 500) return new VideoEngineError("Video provider is temporarily unavailable.", 502, true);
   if (status === 400 || status === 422) {
-    return new VideoEngineError("Video generation failed. The provider rejected the request.", 422, false);
+    return new VideoEngineError(detail === undefined
+      ? "The provider rejected this request (HTTP " + status + "). Review the prompt and model settings."
+      : providerFailureReason(detail), 422, false);
   }
   return new VideoEngineError("Video provider could not process this request.", 502, false);
 }
@@ -179,9 +239,9 @@ class FalWanEngine implements VideoEngine {
 
   constructor(private readonly key: string) {}
 
-  private client() {
+  private client(timeoutMs = 20_000) {
     const controller = new AbortController();
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]);
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(timeoutMs)]);
     const client = createFalClient({
       credentials: this.key,
       // The UI owns retries. Aborting on an error also prevents the SDK's queue
@@ -190,7 +250,17 @@ class FalWanEngine implements VideoEngine {
         try {
           signal.throwIfAborted();
           const response = await fetch(url, { ...init, signal, cache: "no-store" });
-          if (!response.ok) throw providerHttpError(response.status);
+          if (!response.ok) {
+            let details: unknown;
+            if ((response.status === 400 || response.status === 403 || response.status === 422) &&
+                response.headers.get("content-type")?.includes("application/json")) {
+              try {
+                const raw = await response.clone().text();
+                if (raw.length <= 4096) details = JSON.parse(raw) as unknown;
+              } catch { /* Provider did not supply readable error details. */ }
+            }
+            throw providerHttpError(response.status, details);
+          }
           return response;
         } catch (error) {
           controller.abort();
@@ -214,7 +284,10 @@ class FalWanEngine implements VideoEngine {
     const common = {
       prompt: scenePrompt,
       resolution: input.quality,
-      aspect_ratio: input.aspect,
+      // Wan 2.7 first-frame I2V does not accept aspect_ratio. Unlike 2.7 T2V,
+      // it derives the output composition from the provided first frame,
+      // which the browser has already framed to the selected ratio.
+      ...(tier !== "v27" || input.mode === "text" ? { aspect_ratio: input.aspect } : {}),
     };
     const faceAvoid = "altered identity, different face, face morphing, changed facial features, warped eyes, unnatural face, extra facial features";
     let payload: Record<string, string | number | boolean>;
@@ -239,7 +312,9 @@ class FalWanEngine implements VideoEngine {
         ...(input.mode === "image" ? { start_image_url: input.imageUrl! } : {}) };
     }
     try {
-      const { client, signal } = this.client();
+      // A Base64 reference can be several MB. Give the one-time image queue
+      // submission more transport time; do not retry a possibly billed POST.
+      const { client, signal } = this.client(input.mode === "image" ? 45_000 : 20_000);
       const queued = await client.queue.submit(endpoint, { input: payload, abortSignal: signal });
       if (!queued || !REQUEST_ID.test(queued.request_id ?? "")) {
         throw new VideoEngineError("Video provider did not return a valid job ID.", 502, false);
@@ -266,7 +341,10 @@ class FalWanEngine implements VideoEngine {
       // Current queue responses can include errors on COMPLETED, while older
       // saved requests may report FAILED. Neither is a usable video result.
       if (("error" in state && state.error) || ("error_type" in state && state.error_type) || String(state.status) === "FAILED") {
-        return this.job(id, "failed");
+        const reason = providerFailureReason(state);
+        // Never record user prompts, reference images, raw provider bodies or request IDs in logs.
+        console.warn("AI_ROOM_FAL_JOB_FAILED", JSON.stringify({ endpoint, category: reason }));
+        return {...this.job(id, "failed"), error: reason};
       }
       if (state.status !== "COMPLETED") {
         throw new VideoEngineError("Video provider returned an unknown status. Please try again shortly.", 502, true);

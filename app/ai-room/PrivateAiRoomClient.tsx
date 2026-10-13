@@ -5,6 +5,7 @@ import GenerationPinGate from "./GenerationPinGate";
 import {WAN_CATALOG,WAN_MODEL_NAMES,isWanModel,type WanModel,type WanDuration,type WanQuality} from "@/lib/wan-models";
 import {estimateWanCostUsd} from "@/lib/ai-room-jobs";
 import {aspectValue,frameReferenceImage,type AiRoomAspect} from "@/lib/ai-room-framing";
+import {privateVideoSurfaces,reconcilePrivateJobs} from "@/lib/ai-room-private-views";
 
 type PrivateJob={
   id:string;prompt:string;model:string;mode:string;duration:string;aspect:string;quality:string;
@@ -37,6 +38,7 @@ export default function PrivateAiRoomClient({ready,pinEnabled}:{ready:boolean;pi
   const [contentMode,setContentMode]=useState<"standard"|"mature">("standard");
   const [matureEligible,setMatureEligible]=useState(false);
   const [adultConfirmed,setAdultConfirmed]=useState(false);
+  const [imageConsentConfirmed,setImageConsentConfirmed]=useState(false);
   const [prompt,setPrompt]=useState("");
   const [model,setModel]=useState<WanModel>("Wan 2.2 Fast");
   const [duration,setDuration]=useState<WanDuration>("5s");
@@ -51,10 +53,16 @@ export default function PrivateAiRoomClient({ready,pinEnabled}:{ready:boolean;pi
   const activeUserRef=useRef<string|null>(null);
   const sessionEpoch=useRef(0);
   const gallerySequence=useRef(0);
+  const acceptedIds=useRef(new Set<string>());
+  const deletedIds=useRef(new Set<string>());
+  const imageSequence=useRef(0);
   const galleryRequests=useRef(new Set<AbortController>());
   const invalidateSession=useCallback(()=>{
     sessionEpoch.current+=1;
     gallerySequence.current+=1;
+    imageSequence.current+=1;
+    acceptedIds.current.clear();
+    deletedIds.current.clear();
     for(const request of galleryRequests.current)request.abort();
     galleryRequests.current.clear();
   },[]);
@@ -64,24 +72,31 @@ export default function PrivateAiRoomClient({ready,pinEnabled}:{ready:boolean;pi
     const epoch=sessionEpoch.current;
     const sequence=++gallerySequence.current;
     const request=new AbortController();
+    // Bound the browser wait even when an old OCI deployment is retrying.
+    // A timeout reports a connection error; it must never fabricate an empty Gallery.
+    const timeout=AbortSignal.timeout(8_000);
+    const signal=AbortSignal.any([request.signal,timeout]);
     galleryRequests.current.add(request);
     setJobsLoadState(previous=>previous==="ready"?"ready":"loading");
     try{
       const result=await asJson(await fetch("/api/ai-room/jobs",{
-        cache:"no-store",signal:request.signal
+        cache:"no-store",signal
       }));
       if(activeUserRef.current!==owner || epoch!==sessionEpoch.current ||
         sequence!==gallerySequence.current)return;
       if(!Array.isArray(result.jobs))throw new Error("Invalid private Gallery response.");
-      setJobs(result.jobs as PrivateJob[]);
+      setJobs(current=>reconcilePrivateJobs(result.jobs as PrivateJob[],current,acceptedIds.current,deletedIds.current));
       setJobsLoadState("ready");
       setJobsLoadError("");
     }catch(e){
       if(request.signal.aborted || activeUserRef.current!==owner ||
         epoch!==sessionEpoch.current || sequence!==gallerySequence.current)return;
       setJobsLoadState("error");
-      setJobsLoadError(e instanceof Error?e.message:"Unable to load private videos.");
-      throw e;
+      const message=timeout.aborted
+        ? "OCI Gallery did not respond within 8 seconds. The saved videos were not changed. Retry after checking the storage connection."
+        : e instanceof Error?e.message:"Unable to load private videos.";
+      setJobsLoadError(message);
+      throw new Error(message);
     }finally{
       galleryRequests.current.delete(request);
     }
@@ -120,6 +135,10 @@ export default function PrivateAiRoomClient({ready,pinEnabled}:{ready:boolean;pi
             if(epoch!==sessionEpoch.current)break;
             const update=result.job as PrivateJob;
             setJobs(current=>current.map(row=>row.id===job.id?update:row));
+            if(update.status==="failed"){
+              setError((update.error||"The provider could not complete this request.")+
+                " No video was added to Recent, Gallery, or Preview.");
+            }
           }catch(e){
             if(epoch===sessionEpoch.current)
               setError(e instanceof Error?e.message:"Status temporarily unavailable; job was not resubmitted");
@@ -142,7 +161,7 @@ export default function PrivateAiRoomClient({ready,pinEnabled}:{ready:boolean;pi
       activeUserRef.current=data.user;
       setUser(data.user);setPassword("");setMatureEligible(data.matureEligible===true);setPinActive(false);
       setJobs([]);setJobsLoadState("loading");setJobsLoadError("");
-      setContentMode("standard");setAdultConfirmed(false);
+      setContentMode("standard");setAdultConfirmed(false);setImageConsentConfirmed(false);
     }catch(e){setError(e instanceof Error?e.message:"Login failed");}
     finally{setBusy(false);}
   }
@@ -152,19 +171,40 @@ export default function PrivateAiRoomClient({ready,pinEnabled}:{ready:boolean;pi
       invalidateSession();
       activeUserRef.current=null;
       setUser(null);setPinActive(false);setBusy(false);setJobs([]);setJobsLoadState("idle");setJobsLoadError("");setOpenJob(null);setReference("");setPrompt("");setError("");
-      setMatureEligible(false);setContentMode("standard");setAdultConfirmed(false);
+      setMatureEligible(false);setContentMode("standard");setAdultConfirmed(false);setImageConsentConfirmed(false);
     }catch(e){setError(e instanceof Error?e.message:"Sign-out failed");}
   }
   function imageChanged(file?:File){
-    setReference("");setReferenceName("");
+    const selection=++imageSequence.current;
+    setReference("");setReferenceName("");setImageConsentConfirmed(false);
     if(!file)return;
     if(!["image/jpeg","image/png","image/webp"].includes(file.type) || file.size>2_500_000){
       setError("Use a JPG, PNG or WEBP reference no larger than 2.5 MB.");return;
     }
     const epoch=sessionEpoch.current;
     const reader=new FileReader();
-    reader.onload=()=>{if(epoch===sessionEpoch.current && typeof reader.result==="string"){setReference(reader.result);setReferenceName(file.name);}};
-    reader.onerror=()=>{if(epoch===sessionEpoch.current)setError("Could not read reference photo");};
+    reader.onload=()=>{
+      const dataUrl=reader.result;
+      if(typeof dataUrl!=="string")return;
+      // Check real browser decoding now, not after the user presses paid Generate.
+      void (async()=>{
+        const image=new Image();
+        image.src=dataUrl;
+        try{
+          await image.decode();
+          if(!image.naturalWidth||!image.naturalHeight)throw new Error("Empty frame");
+        }catch{
+          if(epoch===sessionEpoch.current&&selection===imageSequence.current){
+            setError("This reference image could not be decoded. Choose a valid JPG, PNG or WEBP photo.");
+          }
+          return;
+        }
+        if(epoch===sessionEpoch.current&&selection===imageSequence.current){
+          setReference(dataUrl);setReferenceName(file.name);setError("");
+        }
+      })();
+    };
+    reader.onerror=()=>{if(epoch===sessionEpoch.current && selection===imageSequence.current)setError("Could not read reference photo");};
     reader.readAsDataURL(file);
   }
   function pickModel(value:string){
@@ -174,7 +214,7 @@ export default function PrivateAiRoomClient({ready,pinEnabled}:{ready:boolean;pi
     if(!(WAN_CATALOG[value].qualities as readonly string[]).includes(quality))setQuality("720p");
   }
   const estimate=useMemo(()=>estimateWanCostUsd({model,mode,duration,quality}),[model,mode,duration,quality]);
-  const canGenerate=ready&&Boolean(user)&&(!pinEnabled||pinActive)&&jobsLoadState==="ready"&&!busy&&prompt.trim().length>=3&&(mode==="text"||Boolean(reference))&&estimate!==null&&(contentMode==="standard"||(matureEligible&&adultConfirmed&&mode==="text"));
+  const canGenerate=ready&&Boolean(user)&&(!pinEnabled||pinActive)&&!busy&&prompt.trim().length>=3&&(mode==="text"||Boolean(reference))&&estimate!==null&&(contentMode==="standard"||(matureEligible&&adultConfirmed&&(mode==="text"||imageConsentConfirmed)));
   async function generate(){
     if(!canGenerate)return;
     const epoch=sessionEpoch.current;
@@ -183,10 +223,15 @@ export default function PrivateAiRoomClient({ready,pinEnabled}:{ready:boolean;pi
       const imageUrl=mode==="image"?await frameReferenceImage(reference,ratio):undefined;
       const result=await asJson(await fetch("/api/ai-room/generate",{
         method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({prompt:prompt.trim(),mode,model,duration,aspect:ratio,quality,preserveFace:mode==="image"&&preserveFace,imageUrl,contentMode,adultConfirmed:contentMode==="mature"&&adultConfirmed})
+        body:JSON.stringify({prompt:prompt.trim(),mode,model,duration,aspect:ratio,quality,preserveFace:mode==="image"&&preserveFace,imageUrl,contentMode,adultConfirmed:contentMode==="mature"&&adultConfirmed,imageConsentConfirmed:contentMode==="mature"&&mode==="image"&&imageConsentConfirmed})
       }));
       if(epoch!==sessionEpoch.current)return;
-      setJobs(current=>[result.job as PrivateJob,...current]);
+      const submitted=result.job as PrivateJob;
+      if(!submitted || typeof submitted.id!=="string" || !submitted.id){
+        throw new Error("Provider submission response is incomplete. Check History before retrying; do not resubmit a potentially charged request.");
+      }
+      acceptedIds.current.add(submitted.id);
+      setJobs(current=>[submitted,...current.filter(row=>row.id!==submitted.id)]);
       setPrompt("");
     }catch(e){
       if(epoch===sessionEpoch.current)setError(e instanceof Error?e.message:"Generate failed. Check Gallery before retrying.");
@@ -199,15 +244,17 @@ export default function PrivateAiRoomClient({ready,pinEnabled}:{ready:boolean;pi
     try{
       await asJson(await fetch("/api/ai-room/generate/"+encodeURIComponent(job.id),{method:"DELETE"}));
       if(epoch!==sessionEpoch.current)return;
+      deletedIds.current.add(job.id);
+      acceptedIds.current.delete(job.id);
       setJobs(current=>current.filter(item=>item.id!==job.id));
       setOpenJob(current=>current?.id===job.id?null:current);
     }catch(e){
       if(epoch===sessionEpoch.current)setError(e instanceof Error?e.message:"Delete failed; retry safely");
     }finally{if(epoch===sessionEpoch.current)setBusy(false);}
   }
-  const completed=jobs.filter(j=>j.status==="completed");
-  const latest=completed[0];
-  const visible=view==="gallery"?completed:jobs;
+  const surfaces=useMemo(()=>privateVideoSurfaces(jobs),[jobs]);
+  const {gallery:completed,recent,pending,preview:latest,history}=surfaces;
+  const visible=view==="gallery"?completed:view==="history"?history:recent;
   const title=view==="generate"?"Create a private video":view==="gallery"?"Private Gallery":view==="history"?"Video History":"Usage & Cost";
   return <main className="control-room ai-room-route">
     <aside className="sidebar">
@@ -239,17 +286,18 @@ export default function PrivateAiRoomClient({ready,pinEnabled}:{ready:boolean;pi
         {view==="generate"&&<div className="studio-grid">
           <section className="composer card">
             <div className="content-mode-toggle" role="group" aria-label="Content category">
-              <button type="button" className={contentMode==="standard"?"active":""} aria-pressed={contentMode==="standard"} onClick={()=>{setContentMode("standard");setAdultConfirmed(false);}}>Standard</button>
-              <button type="button" className={contentMode==="mature"?"active":""} aria-pressed={contentMode==="mature"} disabled={!matureEligible} onClick={()=>{setContentMode("mature");setMode("text");setAdultConfirmed(false);}}>Mature 18+</button>
+              <button type="button" className={contentMode==="standard"?"active":""} aria-pressed={contentMode==="standard"} onClick={()=>{setContentMode("standard");setAdultConfirmed(false);setImageConsentConfirmed(false);}}>Standard</button>
+              <button type="button" className={contentMode==="mature"?"active":""} aria-pressed={contentMode==="mature"} disabled={!matureEligible} onClick={()=>{setContentMode("mature");setAdultConfirmed(false);setImageConsentConfirmed(false);}}>Mature 18+</button>
             </div>
             {contentMode==="mature"&&<div className="mature-mode-notice">
               <strong>Mature 18+ · non-explicit</strong>
-              <p>Adult romance, sensual atmosphere, and cinematic storytelling only. No nudity, explicit acts, sexualized minors, or non-consensual intimate material. Text-to-video only.</p>
+              <p>Adult romance, sensual atmosphere, and cinematic storytelling only. No nudity, explicit acts, sexualized minors, or non-consensual intimate material. Image-to-video requires permission to use every depicted adult reference.</p>
               <label className="mature-confirm"><input type="checkbox" checked={adultConfirmed} onChange={e=>setAdultConfirmed(e.target.checked)}/><span>I confirm that I am at least 18 years old, the depicted people are consenting adults, and I have permission to use the content.</span></label>
-              <small>Eligibility is controlled by your account operator. The model provider can still reject prompts under its own policies. Output remains in your private OCI gallery.</small>
+              {mode==="image"&&<label className="mature-confirm"><input type="checkbox" checked={imageConsentConfirmed} onChange={e=>setImageConsentConfirmed(e.target.checked)}/><span>I confirm this reference depicts only adults aged 18+, and I have the explicit permission of every identifiable person to animate their likeness in this non-explicit video. I will not create deceptive or non-consensual intimate content.</span></label>}
+              <small>Eligibility is controlled by your account operator. The model provider can still reject prompts or reference images under its own policies. Confirmation is not automatic age or identity verification. Output remains in your private OCI gallery.</small>
             </div>}
             <div className="tabs"><button className={mode==="text"?"active":""} onClick={()=>setMode("text")}>Text → Video</button>
-              <button disabled={contentMode==="mature"} className={mode==="image"?"active":""} onClick={()=>setMode("image")}>Image → Video</button></div>
+              <button className={mode==="image"?"active":""} onClick={()=>{setMode("image");setImageConsentConfirmed(false);}}>Image → Video</button></div>
             {mode==="image"&&<div>
               <label className="drop"><input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>{imageChanged(e.target.files?.[0]);e.currentTarget.value="";}}/>
                 {reference?<><img className="reference-preview" src={reference} alt="Reference photo"/><b>{referenceName}</b></>:<><b>＋ Add reference image</b><span>JPG / PNG / WEBP · max 2.5 MB</span></>}</label>
@@ -264,7 +312,8 @@ export default function PrivateAiRoomClient({ready,pinEnabled}:{ready:boolean;pi
               <label><span>Quality</span><select value={quality} onChange={e=>setQuality(e.target.value as WanQuality)}>{WAN_CATALOG[model].qualities.map(q=><option key={q}>{q}</option>)}</select></label>
             </div>
             {pinEnabled&&<GenerationPinGate onChange={setPinActive} refreshKey={user||undefined}/>}
-             <div className="info-banner">Your generated file will transfer from fal.ai into private OCI Object Storage. The reference is processed by fal.ai during inference.</div>
+            <div className="info-banner">Your generated file will transfer from fal.ai into private OCI Object Storage. The reference is processed by fal.ai during inference.</div>
+            {jobsLoadState==="error"&&<div className="info-banner" role="status">Gallery is temporarily unavailable. New generation is allowed only if the server can verify OCI usage and storage. If an earlier submission is uncertain, wait for Gallery recovery before repeating the same prompt to avoid duplicate charges.</div>}
             <div className="generate-row"><div><small>Estimated fal.ai cost</small><strong>{estimate===null?"Unavailable":"~$"+estimate.toFixed(2)}</strong><small>Daily generation limit applies.</small></div>
               <button className="generate" disabled={!canGenerate} onClick={()=>void generate()}>{busy?"Working…":"Generate video ✦"}</button></div>
           </section>
@@ -276,15 +325,16 @@ export default function PrivateAiRoomClient({ready,pinEnabled}:{ready:boolean;pi
           </aside>
         </div>}
         {view==="usage"&&<section className="queue card"><h2>Usage</h2>
-          <p>{jobsLoadState==="ready"?`${jobs.length} saved jobs · ${completed.length} completed.`:"Video inventory is not available until storage responds successfully."} Cost estimates are not billing statements.</p>
+          <p>{jobsLoadState==="ready"?`${jobs.length} submitted attempts · ${completed.length} completed videos.`:"Video inventory is not available until storage responds successfully."} Cost estimates are not billing statements.</p>
           <p>Videos remain in OCI until you delete them. Your daily generation limit is configured by the operator.</p>
         </section>}
+        {view==="generate"&&pending.length>0&&<div className="info-banner" role="status">{pending.length} submitted video {pending.length===1?"job is":"jobs are"} still processing. Status is tracked in History; only successful videos appear in Recent, Gallery and Preview.</div>}
         {(view==="gallery"||view==="history"||view==="generate")&&<section className="queue card">
           <div className="section-head"><div><span className="kicker">PRIVATE STORAGE</span><h2>{view==="gallery"?"Completed videos":view==="history"?"Generation history":"Recent generations"}</h2></div><span>{jobsLoadState==="ready"?visible.length+" jobs":jobsLoadState==="error"?"Unavailable":"Loading…"}</span></div>
           {jobsLoadState==="error"?<div className="error-banner" role="alert">Unable to load your private videos: {jobsLoadError}. Your saved videos have not been deleted. <button type="button" onClick={()=>{if(user)void loadJobs(user).catch(()=>{});}}>Retry loading</button></div>:
           jobsLoadState!=="ready"?<div className="empty" role="status">Loading private videos from OCI…</div>:
           visible.length===0?<div className="empty">No saved videos here yet.</div>:
-          <div className={view==="gallery"?"gallery-grid":""}>{(view==="generate"?visible.slice(0,8):visible).map(job=>
+          <div className={view==="gallery"?"gallery-grid":""}>{visible.map(job=>
             <article className={view==="gallery"?"gallery-item":"job"} key={job.id}>
               {job.videoUrl&&view==="gallery"?<video src={job.videoUrl} controls playsInline style={{aspectRatio:aspectValue(job.aspect)}}/>:<div className="thumb">✦</div>}
               <div><strong>{job.prompt}</strong><span>{job.model} · {job.duration} · {job.aspect} · {job.status}{job.contentMode==="mature"?" · Mature 18+ non-explicit":""}</span>

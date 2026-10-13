@@ -183,8 +183,12 @@ export async function privateSubmit(owner:string,body:unknown):Promise<ClientJob
 export function assertFalMediaUrl(raw:string):URL{
   let u:URL;
   try{u=new URL(raw);}catch{throw new VideoEngineError("Provider video URL is invalid.",502,false);}
-  if(u.protocol!=="https:" || u.username || u.password || u.port ||
-    !/(^|\.)fal\.media$/.test(u.hostname) || (u.hostname==="fal.media" && u.pathname==="/")){
+  const falMedia=/(^|\.)fal\.media$/.test(u.hostname) && !(u.hostname==="fal.media" && u.pathname==="/");
+  // fal.ai Wan examples also return files hosted in its falserverless GCS bucket.
+  // Only that exact public provider bucket is accepted, never arbitrary GCS.
+  const falStorage=u.hostname==="storage.googleapis.com" &&
+    u.pathname.startsWith("/falserverless/") && u.pathname.length>"/falserverless/".length;
+  if(u.protocol!=="https:" || u.username || u.password || u.port || (!falMedia && !falStorage)){
     throw new VideoEngineError("Untrusted provider media host.",502,false);
   }
   return u;
@@ -258,7 +262,7 @@ export async function privateStatus(owner:string,id:string):Promise<ClientJob>{
   if(state.status==="queued" || state.status==="processing"){
     if(record.status!==state.status){record={...record,status:state.status};await putRecord(record);}
   }else if(state.status==="failed"){
-    record={...record,status:"failed",error:"Provider could not generate this video."};
+    record={...record,status:"failed",error:state.error||"Provider could not generate this video."};
     await putRecord(record);
   }else if(state.status==="completed" && state.videoUrl){
     await importVideo(owner,id,state.videoUrl);

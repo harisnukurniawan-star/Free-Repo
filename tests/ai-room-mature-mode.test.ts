@@ -37,6 +37,7 @@ test("normal mode stays the default and does not require 18+ affirmation",t=>{
   const request=parseVideoRequest(example());
   assert.equal(request.contentMode,"standard");
   assert.equal(request.adultConfirmed,false);
+  assert.equal(request.imageConsentConfirmed,false);
   assert.equal(request.mode,"text");
   assert.equal(request.model,"Wan 2.2 Fast");
   assert.equal(parseVideoRequest(example({mode:"image",imageUrl:reference})).mode,"image");
@@ -45,6 +46,7 @@ test("normal mode stays the default and does not require 18+ affirmation",t=>{
 test("mode input and age affirmation must be valid data types",()=>{
   assert.throws(()=>parseVideoRequest(example({contentMode:"anything"})), /Unsupported content mode/);
   assert.throws(()=>parseVideoRequest(example({adultConfirmed:"true"})),/Invalid adult confirmation/);
+  assert.throws(()=>parseVideoRequest(example({imageConsentConfirmed:"true"})),/Invalid image consent confirmation/);
   assert.throws(()=>parseVideoRequest(example({contentMode:null})),/Unsupported content mode/);
 });
 
@@ -63,10 +65,23 @@ test("mature request requires affirmative adult declaration",t=>{
   assert.equal(accepted.adultConfirmed,true);
 });
 
-test("mature image-to-video remains unavailable pending image consent and account controls",t=>{
+test("mature image-to-video requires explicit adult, image and permission confirmation",t=>{
   setMatureFlag(t,"true");
-  assert.throws(()=>parseVideoRequest(example({mode:"image",imageUrl:reference,contentMode:"mature",adultConfirmed:true})),
-    (error:unknown)=>error instanceof VideoEngineError&&error.httpStatus===403&&/image-to-video/i.test(error.message));
+  const values={mode:"image",imageUrl:reference,contentMode:"mature"};
+  assert.throws(()=>parseVideoRequest(example({...values,adultConfirmed:false,imageConsentConfirmed:true})),
+    (error:unknown)=>error instanceof VideoEngineError&&error.httpStatus===403&&/18 or older/i.test(error.message));
+  assert.throws(()=>parseVideoRequest(example({...values,adultConfirmed:true})),
+    (error:unknown)=>error instanceof VideoEngineError&&error.httpStatus===403&&/permission/i.test(error.message));
+  assert.throws(()=>parseVideoRequest(example({...values,adultConfirmed:true,imageConsentConfirmed:false})),
+    (error:unknown)=>error instanceof VideoEngineError&&error.httpStatus===403);
+  const accepted=parseVideoRequest(example({...values,adultConfirmed:true,imageConsentConfirmed:true}));
+  assert.equal(accepted.contentMode,"mature");
+  assert.equal(accepted.mode,"image");
+  assert.equal(accepted.imageConsentConfirmed,true);
+  assert.equal(accepted.imageUrl,reference);
+  // Merely supplying a confirmation does not bypass format requirements.
+  assert.throws(()=>parseVideoRequest(example({...values,imageUrl:"https://untrusted.example/image.png",adultConfirmed:true,imageConsentConfirmed:true})),
+    (error:unknown)=>error instanceof VideoEngineError&&error.httpStatus===400);
 });
 
 test("baseline disallowed prompts blocked in both modes before paid submission",t=>{
