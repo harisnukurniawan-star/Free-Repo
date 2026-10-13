@@ -181,7 +181,27 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
     }
     const epoch=sessionEpoch.current;
     const reader=new FileReader();
-    reader.onload=()=>{if(epoch===sessionEpoch.current && selection===imageSequence.current && typeof reader.result==="string"){setReference(reader.result);setReferenceName(file.name);}};
+    reader.onload=()=>{
+      const dataUrl=reader.result;
+      if(typeof dataUrl!=="string")return;
+      // Check real browser decoding now, not after the user presses paid Generate.
+      void (async()=>{
+        const image=new Image();
+        image.src=dataUrl;
+        try{
+          await image.decode();
+          if(!image.naturalWidth||!image.naturalHeight)throw new Error("Empty frame");
+        }catch{
+          if(epoch===sessionEpoch.current&&selection===imageSequence.current){
+            setError("This reference image could not be decoded. Choose a valid JPG, PNG or WEBP photo.");
+          }
+          return;
+        }
+        if(epoch===sessionEpoch.current&&selection===imageSequence.current){
+          setReference(dataUrl);setReferenceName(file.name);setError("");
+        }
+      })();
+    };
     reader.onerror=()=>{if(epoch===sessionEpoch.current && selection===imageSequence.current)setError("Could not read reference photo");};
     reader.readAsDataURL(file);
   }
