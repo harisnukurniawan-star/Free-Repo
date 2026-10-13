@@ -666,3 +666,43 @@ test("Wan 2.7 image payload matches its I2V schema, while T2V retains ratio",asy
   assert.equal(calls[0].resolution,"720p");
   assert.equal(calls[1].aspect_ratio,"9:16");
 });
+
+test("provider 403 content-safety refusal is labeled correctly without raw error disclosure",async t=>{
+  useFal(t);
+  let posts=0;
+  globalThis.fetch=(async (_input,init)=>{
+    if((init?.method??"GET")==="POST")posts++;
+    return json({detail:"content safety check: disallowed content in reference image"},403);
+  }) as typeof fetch;
+  await assert.rejects(
+    ()=>getVideoEngine().submit(parseVideoRequest({
+      prompt:"Two consenting adults walking along a beach at sunset",
+      mode:"image",model:"Wan 2.2 Fast",duration:"5s",aspect:"16:9",quality:"720p",
+      imageUrl:"data:image/png;base64,AAAA",
+    })),
+    (error:unknown)=>{
+      assert.ok(error instanceof VideoEngineError);
+      assert.equal(error.httpStatus,422);
+      assert.equal(error.retryable,false);
+      assert.match(error.message,/content safety policy/i);
+      assert.doesNotMatch(error.message,/disallowed content in reference image/i);
+      return true;
+    });
+  assert.equal(posts,1,"rejected paid I2V submission must not be replayed");
+});
+
+test("unknown provider 403 remains authentication/config error, never a policy guess",async t=>{
+  useFal(t);
+  globalThis.fetch=(async ()=>json({detail:"API credentials denied"},403)) as typeof fetch;
+  await assert.rejects(
+    ()=>getVideoEngine().submit(parseVideoRequest({
+      prompt:"A cinematic sunrise on a quiet mountain",
+      mode:"text",model:"Wan 2.2 Fast",duration:"5s",aspect:"16:9",quality:"720p",
+    })),
+    (error:unknown)=>{
+      assert.ok(error instanceof VideoEngineError);
+      assert.equal(error.httpStatus,503);
+      assert.match(error.message,/authentication failed/i);
+      return true;
+    });
+});
