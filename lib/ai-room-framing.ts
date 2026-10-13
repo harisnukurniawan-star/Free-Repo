@@ -45,6 +45,15 @@ export function referenceFrameLayout(width: number, height: number, aspect: AiRo
   };
 }
 
+// Re-encode large same-ratio images before the paid API request. A multi-MB
+// inline PNG/WebP/JPEG can otherwise use most of the request body budget and
+// increase transport latency, even when its dimensions already match.
+export function referenceNeedsNormalization(
+  frame: ReturnType<typeof referenceFrameLayout>, sourceCharacters: number,
+): boolean {
+  return frame.needsFraming || frame.needsResize || sourceCharacters > 900_000;
+}
+
 /** Keep the original photograph completely visible in the selected canvas ratio.
  * Build before paid submission; never submit if conversion fails.
  */
@@ -53,7 +62,8 @@ export async function frameReferenceImage(dataUrl: string, aspect: AiRoomAspect)
   photo.src = dataUrl;
   await photo.decode();
   const frame = referenceFrameLayout(photo.naturalWidth, photo.naturalHeight, aspect);
-  if (!frame.needsFraming && !frame.needsResize) return dataUrl;
+  if (!referenceNeedsNormalization(frame, dataUrl.length)) return dataUrl;
+  const geometryRequired = frame.needsFraming || frame.needsResize;
   const canvas = document.createElement("canvas");
   canvas.width = frame.width;
   canvas.height = frame.height;
@@ -77,7 +87,10 @@ export async function frameReferenceImage(dataUrl: string, aspect: AiRoomAspect)
 
   for (const quality of [0.9, 0.78, 0.65]) {
     const framed = canvas.toDataURL("image/jpeg", quality);
+    // For already-correct geometry, never enlarge a reference just to re-encode it.
+    if (!geometryRequired && framed.length >= dataUrl.length) continue;
     if (framed.length <= 3_500_000) return framed;
   }
+  if (!geometryRequired && dataUrl.length <= 3_500_000) return dataUrl;
   throw new Error("The framed reference image is too large. Use a smaller reference photo.");
 }
