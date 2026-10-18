@@ -192,67 +192,18 @@ export default function DatabaseDashboard() {
     : 0;
   const snapshotMode = overview?.mode === "snapshot";
 
-  return (
-    <main className="control-room">
-      <DatabaseSidebar mode="hc" ociConnected={Boolean(overview?.connected)} ociSnapshot={snapshotMode} />
 
-      <section className="workspace">
-        <header className="topbar">
-          <div>
-            <span className="eyebrow">DATABASE / OCI HEATWAVE</span>
-            <h1>Database Overview</h1>
-            <p>Read-only schema, storage footprint, relationships and MySQL health.</p>
-          </div>
-          <div className="top-actions">
-            <div className="live-pill">
-              <span /> {overview?.connected ? (snapshotMode ? "SYNCED" : "LIVE") : "OFFLINE"}
-            </div>
-            <button className="refresh-button" onClick={loadAll}>↻ Refresh</button>
-          </div>
-        </header>
-
-        {lastError && <div className="error-banner">{lastError}</div>}
-        {overview?.message && <div className="info-banner">{overview.message}</div>}
-
-        <section className="metric-grid">
-          <article className="metric-card">
-            <span>Source</span>
-            <strong className={overview?.connected ? "good" : "bad"}>
-              {snapshotMode ? "OCI Snapshot" : overview?.connected ? "Connected" : "Offline"}
-            </strong>
-            <small>{snapshotMode ? `Synced ${formatTimestamp(overview?.checkedAt)}` : `${overview?.latencyMs ?? "—"} ms latency`}</small>
-          </article>
-          <article className="metric-card">
-            <span>Database footprint</span>
-            <strong>{formatBytes(overview?.totalBytes || 0)}</strong>
-            <small>Data + indexes</small>
-          </article>
-          <article className="metric-card">
-            <span>Tables</span>
-            <strong>{overview?.tableCount ?? "—"}</strong>
-            <small>{schema.relations.length} FK relations</small>
-          </article>
-          <article className="metric-card">
-            <span>Approx. rows</span>
-            <strong>{formatNumber(overview?.approximateRows || 0)}</strong>
-            <small>InnoDB metadata estimate</small>
-          </article>
-          <article className="metric-card">
-            <span>Connections</span>
-            <strong>{overview?.activeConnections ?? "—"}</strong>
-            <small>At snapshot time</small>
-          </article>
-        </section>
-
-        <section className="panel schema-panel">
+  const [hcTab, setHcTab] = useState<"overview" | "schema" | "storage">("overview");
+  const renderSchemaPanel = (full: boolean) => (
+    <section className={`panel schema-panel hc-schema-panel ${full ? "hc-schema-full" : "hc-schema-overview"}`}>
           <div className="panel-head">
             <div>
               <span className="eyebrow">SCHEMA MAP</span>
               <h2>Relational view</h2>
             </div>
             <div className="schema-tools">
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search table..." />
-              {selected && <button onClick={() => setSelected(null)}>Clear highlight</button>}
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search table..." aria-label="Cari nama tabel" />
+              {selected && <button type="button" onClick={() => setSelected(null)}>Clear highlight</button>}
             </div>
           </div>
           <div className="schema-body">
@@ -321,56 +272,126 @@ export default function DatabaseDashboard() {
             </aside>
           </div>
         </section>
+  );
 
-        <section className="lower-grid">
-          <article className="panel compact-panel">
-            <div className="panel-head">
-              <div><span className="eyebrow">STORAGE</span><h2>Largest tables</h2></div>
+  return (
+    <main className="control-room terrace-one-view hc-one-view">
+      <DatabaseSidebar mode="hc" ociConnected={Boolean(overview?.connected)} ociSnapshot={snapshotMode} />
+      <section className="workspace terrace-workspace hc-workspace">
+        <header className="topbar terrace-topbar hc-topbar">
+          <div>
+            <span className="eyebrow">DATABASE / OCI HEATWAVE</span>
+            <h1>HC Connect</h1>
+            <p>Database Overview · Read-only metadata, relasi dan performa MySQL</p>
+          </div>
+          <div className="top-actions">
+            <span className="terrace-zoom-label">ONE VIEW · 100%</span>
+            <span className={`hc-status-pill ${overview?.connected ? (snapshotMode ? "snapshot" : "live") : "offline"}`}>
+              <span aria-hidden="true">●</span> {overview?.connected ? (snapshotMode ? "SNAPSHOT" : "LIVE") : "OFFLINE"}
+            </span>
+            <button type="button" className="refresh-button" onClick={loadAll}>↻ Refresh</button>
+          </div>
+        </header>
+
+        <div className="hc-alerts">
+          {lastError && <div role="alert" className="error-banner">{lastError}</div>}
+          {overview?.message && <div className="info-banner">{overview.message}</div>}
+          {!overview?.message && !lastError && <div className="info-banner">Read-only OCI metadata. Tidak ada perubahan atau penyimpanan isi tabel database dari Control Room.</div>}
+        </div>
+
+        <div className="terrace-tabs hc-tabs" role="tablist" aria-label="HC Connect sections">
+          {([
+            ["overview", "Overview"],
+            ["schema", "Schema Map"],
+            ["storage", "Storage & Health"],
+          ] as const).map(([key, title]) => (
+            <button key={key} type="button" role="tab" aria-selected={hcTab === key} className={hcTab === key ? "selected" : ""} onClick={() => setHcTab(key)}>{title}</button>
+          ))}
+        </div>
+
+        <section className="metric-grid hc-metrics" aria-label="Ringkasan OCI Database">
+          <article className="metric-card">
+            <span>Source</span>
+            <strong className={overview?.connected ? "good" : "bad"}>{snapshotMode ? "OCI Snapshot" : overview?.connected ? "Connected" : "Offline"}</strong>
+            <small>{snapshotMode ? `Synced ${formatTimestamp(overview?.checkedAt)}` : `${overview?.latencyMs ?? "—"} ms latency`}</small>
+          </article>
+          <article className="metric-card"><span>Database footprint</span><strong>{formatBytes(overview?.totalBytes || 0)}</strong><small>Data + indexes</small></article>
+          <article className="metric-card"><span>Tables</span><strong>{overview?.tableCount ?? "—"}</strong><small>{schema.relations.length} FK relations</small></article>
+          <article className="metric-card"><span>Approx. rows</span><strong>{formatNumber(overview?.approximateRows || 0)}</strong><small>InnoDB metadata estimate</small></article>
+          <article className="metric-card"><span>Connections</span><strong>{overview?.activeConnections ?? "—"}</strong><small>At snapshot time</small></article>
+        </section>
+
+        <div className="terrace-content hc-content">
+          {hcTab === "overview" && (
+            <div className="hc-summary-grid">
+              {renderSchemaPanel(false)}
+              <div className="hc-side-column">
+                <article className="panel hc-data-panel">
+                  <div className="panel-head"><div><span className="eyebrow">STORAGE</span><h2>Data vs index</h2></div></div>
+                  <div className="composition">
+                    <div className="donut" style={{ background: `conic-gradient(#2563eb ${dataPct}%, #dbe3ee 0)` }}>
+                      <div><strong>{dataPct}%</strong><span>DATA</span></div>
+                    </div>
+                    <div className="legend">
+                      <div><span className="legend-dot data" /><div><small>Data</small><strong>{formatBytes(overview?.dataBytes || 0)}</strong></div></div>
+                      <div><span className="legend-dot index" /><div><small>Indexes</small><strong>{formatBytes(overview?.indexBytes || 0)}</strong></div></div>
+                    </div>
+                  </div>
+                </article>
+                <article className="panel hc-health-panel">
+                  <div className="panel-head"><div><span className="eyebrow">SERVER HEALTH</span><h2>MySQL runtime</h2></div></div>
+                  <div className="hc-health-compact">
+                    <div><span>Uptime</span><strong>{formatUptime(health?.uptimeSeconds || 0)}</strong></div>
+                    {(health?.metrics || []).slice(0, 5).map(m => (
+                      <div key={m.key}><span>{m.label}</span><strong>{formatNumber(m.value)}</strong></div>
+                    ))}
+                  </div>
+                </article>
+              </div>
             </div>
-            <div className="bars">
-              {topTables.map((t) => (
-                <div className="bar-row" key={t.name}>
-                  <div className="bar-label"><strong>{t.name}</strong><span>{formatBytes(t.totalBytes)}</span></div>
-                  <div className="bar-track">
-                    <div style={{ width: `${Math.max(4, (t.totalBytes / maxTableSize) * 100)}%` }} />
+          )}
+
+          {hcTab === "schema" && <div className="hc-schema-view">{renderSchemaPanel(true)}</div>}
+
+          {hcTab === "storage" && (
+            <div className="hc-storage-view">
+              <article className="panel hc-largest-panel">
+                <div className="panel-head"><div><span className="eyebrow">STORAGE</span><h2>Largest tables</h2></div></div>
+                <div className="bars">
+                  {topTables.map(t => (
+                    <div className="bar-row" key={t.name}>
+                      <div className="bar-label"><strong>{t.name}</strong><span>{formatBytes(t.totalBytes)}</span></div>
+                      <div className="bar-track"><div style={{ width: `${Math.max(4, (t.totalBytes / maxTableSize) * 100)}%` }} /></div>
+                    </div>
+                  ))}
+                </div>
+              </article>
+              <article className="panel hc-data-panel">
+                <div className="panel-head"><div><span className="eyebrow">COMPOSITION</span><h2>Data vs index</h2></div></div>
+                <div className="composition">
+                  <div className="donut" style={{ background: `conic-gradient(#2563eb ${dataPct}%, #dbe3ee 0)` }}><div><strong>{dataPct}%</strong><span>DATA</span></div></div>
+                  <div className="legend">
+                    <div><span className="legend-dot data" /><div><small>Data</small><strong>{formatBytes(overview?.dataBytes || 0)}</strong></div></div>
+                    <div><span className="legend-dot index" /><div><small>Indexes</small><strong>{formatBytes(overview?.indexBytes || 0)}</strong></div></div>
                   </div>
                 </div>
-              ))}
+              </article>
+              <article className="panel hc-runtime-panel">
+                <div className="panel-head">
+                  <div><span className="eyebrow">SERVER HEALTH</span><h2>MySQL runtime</h2></div>
+                  <small>{overview?.serverVersion ? `MySQL ${overview.serverVersion} · ` : ""}{snapshotMode ? "Snapshot " : "Updated "}{formatTimestamp(overview?.checkedAt)}</small>
+                </div>
+                <div className="health-grid">
+                  <div><span>Uptime</span><strong>{formatUptime(health?.uptimeSeconds || 0)}</strong></div>
+                  {(health?.metrics || []).map(m => (
+                    <div key={m.key}><span>{m.label}</span><strong>{formatNumber(m.value)}</strong></div>
+                  ))}
+                </div>
+              </article>
             </div>
-          </article>
-
-          <article className="panel compact-panel">
-            <div className="panel-head">
-              <div><span className="eyebrow">COMPOSITION</span><h2>Data vs index</h2></div>
-            </div>
-            <div className="composition">
-              <div className="donut" style={{ background: `conic-gradient(#2563eb ${dataPct}%, #dbe3ee 0)` }}>
-                <div><strong>{dataPct}%</strong><span>DATA</span></div>
-              </div>
-              <div className="legend">
-                <div><span className="legend-dot data" /><div><small>Data</small><strong>{formatBytes(overview?.dataBytes || 0)}</strong></div></div>
-                <div><span className="legend-dot index" /><div><small>Indexes</small><strong>{formatBytes(overview?.indexBytes || 0)}</strong></div></div>
-              </div>
-            </div>
-          </article>
-        </section>
-
-        <section className="panel compact-panel health-panel">
-          <div className="panel-head">
-            <div><span className="eyebrow">SERVER HEALTH</span><h2>MySQL runtime</h2></div>
-            <small>
-              {overview?.serverVersion ? `MySQL ${overview.serverVersion} · ` : ""}
-              {snapshotMode ? "Snapshot " : "Updated "}
-              {formatTimestamp(overview?.checkedAt)}
-            </small>
-          </div>
-          <div className="health-grid">
-            <div><span>Uptime</span><strong>{formatUptime(health?.uptimeSeconds || 0)}</strong></div>
-            {(health?.metrics || []).map((m) => (
-              <div key={m.key}><span>{m.label}</span><strong>{formatNumber(m.value)}</strong></div>
-            ))}
-          </div>
-        </section>
+          )}
+        </div>
+        <footer className="terrace-footer hc-footer">HC Connect · Read-only metadata · {snapshotMode ? `Snapshot ${formatTimestamp(overview?.checkedAt)}` : "Monitoring OCI"} · Kolom, foreign keys, dan detail tabel tetap tersedia di Schema Map.</footer>
       </section>
     </main>
   );
