@@ -119,9 +119,13 @@ export default function DatabaseDashboard() {
   }, []);
 
   useEffect(() => {
-    loadAll();
-    const id = window.setInterval(loadAll, 60000);
-    return () => window.clearInterval(id);
+    // Schedule the initial read outside the synchronous effect body; cancel on unmount.
+    const initial = window.setTimeout(() => { void loadAll(); }, 0);
+    const id = window.setInterval(() => { void loadAll(); }, 60000);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(id);
+    };
   }, [loadAll]);
 
   const selectedTable = schema.tables.find((t) => t.name === selected) || null;
