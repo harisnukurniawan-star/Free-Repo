@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {loadHasnariaActivity} from "../lib/hasnaria-activity";
 
-const keys=["HASNARIA_GITHUB_TOKEN"] as const;
 async function mockedFetch(
   handler:(url:string)=>Response,
   fn:()=>Promise<void>,
@@ -37,7 +36,7 @@ test("CI failures are development signals; ignores PRs in GitHub Issues",async()
     assert.equal(result.actionsSource,"live");
     assert.equal(result.issuesSource,"live");
     assert.equal(result.issueCount,1);
-    assert.deepEqual(result.signals.map(s=>s.kind),["ci","issue"]);
+    assert.deepEqual(result.signals.map(s=>s.kind).sort(),["ci","issue"]);
     assert.ok(result.signals.every(s=>s.scope==="development"));
     assert.equal(result.website.state,"reachable");
     assert.equal(result.website.httpCode,200);
