@@ -27,6 +27,7 @@ export default function HasnariaTerrace({ data }: { data: HasnariaData }) {
   const [section, setSection] = useState<Section>("overview");
   const [environment, setEnvironment] = useState<"production" | "staging">("production");
   const [prView, setPrView] = useState<"open" | "merged">("open");
+  const [prPage, setPrPage] = useState(0);
   const [scenario, setScenario] = useState<Scenario>("database");
   const [impact, setImpact] = useState(3);
   const [complexity, setComplexity] = useState(3);
@@ -36,13 +37,23 @@ export default function HasnariaTerrace({ data }: { data: HasnariaData }) {
   const level = risk >= 65 ? "Tinggi" : risk >= 35 ? "Sedang" : "Rendah";
   const activeDb = environment === "production" ? data.production : data.staging;
   const activeId = environment === "production" ? "bnnhmtkpdjlgehsvgoda" : "rynnpndtzjwpekbiwiif";
+  const prItems = prView === "open" ? data.openPrs : recentMerged.map(p => ({
+    ...p,
+    url: `https://github.com/ekariashoesanti-alt/Hasnaria-ice-cream/pull/${p.number}`,
+    state: "merged" as const,
+    updatedAt: "",
+  }));
+  const prPageCount = Math.max(1, Math.ceil(prItems.length / 4));
+  const safePrPage = Math.min(prPage, prPageCount - 1);
+  const displayedPrs = prItems.slice(safePrPage * 4, (safePrPage + 1) * 4);
   return (
-    <main className="control-room">
+    <main className="control-room terrace-one-view">
       <DatabaseSidebar mode="hasnaria" />
       <section className="workspace terrace-workspace">
         <header className="topbar terrace-topbar">
           <div><span className="eyebrow">DATABASE / HASNARIA ERP</span><h1>Hasnaria Terrace</h1><p>Project Intelligence · Monitoring, delivery, dan evaluasi rilis</p></div>
           <div className="top-actions">
+            <span className="terrace-zoom-label">ONE VIEW · 100%</span>
             <span className="terrace-readonly">◉ Read-only</span>
             <button type="button" className="refresh-button" disabled={busy} onClick={() => startTransition(() => router.refresh())}>{busy ? "Memeriksa…" : "↻ Periksa ulang"}</button>
           </div>
@@ -53,7 +64,8 @@ export default function HasnariaTerrace({ data }: { data: HasnariaData }) {
             <button key={id} type="button" role="tab" aria-selected={section===id} className={section===id?"selected":""} onClick={()=>setSection(id as Section)}>{title}</button>
           )}
         </div>
-        {section === "overview" && <>
+        <div className="terrace-content">
+        {section === "overview" && <div className="terrace-overview">
           <section className="terrace-metrics" aria-label="Hasnaria services">
             <StatusCard label="GitHub" status={{value:"main",source:data.githubSource,checkedAt:data.checkedAt,detail:data.githubNote}} note="Branch utama" />
             <StatusCard label="Vercel Production" status={data.vercel} note="hasnaria-business-analyzer" />
@@ -90,25 +102,32 @@ export default function HasnariaTerrace({ data }: { data: HasnariaData }) {
               <button type="button" className="terrace-primary" onClick={()=>setSection("prs")}>Periksa pekerjaan terbuka →</button>
             </div>
           </article>
-        </>}
-        {section === "prs" && <article className="panel terrace-panel">
+        </div>}
+        {section === "prs" && <article className="panel terrace-panel terrace-pr-panel">
           <div className="panel-head"><div><span className="eyebrow">GITHUB / DELIVERY</span><h2>Pull Request Tracker</h2></div><span className="terrace-tag terrace-static">{data.openPrs.length} Open</span></div>
-          <div className="terrace-panel-body">
+          <div className="terrace-panel-body terrace-pr-body">
             <div className="terrace-switch">
-              <button className={prView==="open"?"selected":""} onClick={()=>setPrView("open")}>Terbuka</button>
-              <button className={prView==="merged"?"selected":""} onClick={()=>setPrView("merged")}>Merged (snapshot)</button>
+              <button type="button" className={prView==="open"?"selected":""} onClick={()=>{setPrView("open");setPrPage(0);}}>Terbuka</button>
+              <button type="button" className={prView==="merged"?"selected":""} onClick={()=>{setPrView("merged");setPrPage(0);}}>Merged (snapshot)</button>
             </div>
             <p className="terrace-footnote">{prView==="open"?data.githubNote:"Daftar PR merged merupakan snapshot pilihan per 18 Oktober 2026, bukan daftar live."}</p>
-            {(prView === "open" ? data.openPrs : recentMerged.map(p=>({...p,url:`https://github.com/ekariashoesanti-alt/Hasnaria-ice-cream/pull/${p.number}`,state:"merged" as const,updatedAt:""}))).map((pr)=>
+            <div className="terrace-pr-list">
+            {displayedPrs.map((pr)=>
               <div className="terrace-pr" key={pr.number}>
                 <div><strong>#{pr.number} · {pr.title}</strong><small>{pr.state === "merged" ? "Merged · riwayat" : "Open · perlu review"}</small></div>
                 <a href={pr.url} target="_blank" rel="noopener noreferrer" aria-label={`Open pull request ${pr.number} on GitHub`}>Buka ↗</a>
               </div>
             )}
             {prView==="open" && data.openPrs.length === 0 && <p className="terrace-text">Tidak ada PR terbuka yang dikembalikan API.</p>}
+            </div>
+            <div className="terrace-pr-pager" aria-label="Navigasi halaman pull request">
+              <button type="button" disabled={safePrPage === 0} onClick={()=>setPrPage(p=>Math.max(0,p-1))}>← Sebelumnya</button>
+              <span>Halaman {safePrPage + 1} / {prPageCount} · {prItems.length} PR</span>
+              <button type="button" disabled={safePrPage >= prPageCount-1} onClick={()=>setPrPage(p=>Math.min(prPageCount-1,p+1))}>Berikutnya →</button>
+            </div>
           </div>
         </article>}
-        {section === "release" && <section className="terrace-two-cols">
+        {section === "release" && <section className="terrace-two-cols terrace-release">
           <article className="panel terrace-panel">
             <div className="panel-head"><div><span className="eyebrow">SANDBOX</span><h2>Simulasi risiko rilis</h2></div></div>
             <div className="terrace-panel-body terrace-form">
@@ -131,6 +150,7 @@ export default function HasnariaTerrace({ data }: { data: HasnariaData }) {
             </div>
           </article>
         </section>}
+        </div>
         <footer className="terrace-footer">Monitoring bersifat read-only. Tidak melakukan perubahan GitHub, Vercel, ataupun Supabase. <a href="https://github.com/ekariashoesanti-alt/Hasnaria-ice-cream" target="_blank" rel="noopener noreferrer">Repository Hasnaria ↗</a></footer>
       </section>
     </main>

@@ -285,3 +285,99 @@ a.nav-item{text-decoration:none}
   .terrace-tabs button{padding:10px 9px}
   .terrace-pr{align-items:flex-start}
 }
+
+
+/* Hasnaria Terrace one-view mode. Constrained to >=1024px wide / >=700px tall:
+   below that, normal vertical scrolling is preserved rather than clipping content. */
+.terrace-content{min-width:0}
+.terrace-pr-list{display:flex;flex-direction:column;gap:8px}
+.terrace-pr-pager{display:flex;justify-content:space-between;align-items:center;gap:12px;border-top:1px solid #e5e7eb;padding:10px 0 0;font-size:11px;color:#64748b}
+.terrace-pr-pager button{border:1px solid #dbe3ee;background:#fff;border-radius:8px;padding:8px 11px;color:#1d4ed8;font-weight:600;cursor:pointer}
+.terrace-pr-pager button:disabled{opacity:.4;cursor:not-allowed}
+.terrace-zoom-label{display:none;border:1px solid #c7d2fe;background:#eef2ff;color:#3730a3;border-radius:9px;padding:9px 10px;font-size:10px;font-weight:700;white-space:nowrap}
+
+@media(min-width:1024px) and (min-height:700px){
+  .control-room.terrace-one-view{grid-template-columns:230px minmax(0,1fr);height:100dvh;min-height:0;overflow:hidden}
+  .terrace-one-view .sidebar{height:100dvh;min-height:0}
+  .control-room.terrace-one-view>.terrace-workspace{
+    height:100dvh;min-height:0;overflow:hidden;
+    padding:clamp(10px,1.35vh,17px) clamp(15px,1.8vw,26px) clamp(8px,1.1vh,13px);
+    display:grid;grid-template-rows:auto auto auto minmax(0,1fr) auto;gap:clamp(5px,.8vh,9px)
+  }
+  .terrace-workspace .terrace-topbar{margin:0;min-width:0;align-items:center}
+  .terrace-workspace .terrace-topbar h1{font-size:clamp(21px,2.7vh,26px)}
+  .terrace-workspace .terrace-topbar p{margin-top:4px}
+  .terrace-workspace .terrace-topbar .eyebrow{margin-bottom:3px}
+  .terrace-workspace .top-actions{flex-shrink:0}
+  .terrace-workspace .terrace-zoom-label{display:inline-flex}
+  .terrace-workspace .info-banner{margin:0;padding:8px 11px;font-size:10px;line-height:1.35}
+  .terrace-workspace .terrace-tabs{margin:0;padding:3px;min-height:0}
+  .terrace-workspace .terrace-tabs button{padding:7px 12px}
+  .terrace-workspace .terrace-content{height:100%;min-height:0;overflow:hidden}
+  .terrace-workspace .terrace-footer{padding:7px 0 0;line-height:1.2;font-size:10px;min-height:0}
+  .terrace-workspace .terrace-overview{
+    height:100%;min-height:0;display:grid;
+    grid-template-rows:minmax(0,.95fr) minmax(0,1.6fr) minmax(0,.79fr);
+    gap:clamp(6px,.9vh,10px)
+  }
+  .terrace-workspace .terrace-overview .terrace-metrics{
+    margin:0;min-height:0;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px
+  }
+  .terrace-workspace .terrace-card{min-height:0;padding:clamp(9px,1.25vh,14px);gap:clamp(3px,.55vh,7px);justify-content:center}
+  .terrace-workspace .terrace-card>strong{font-size:clamp(14px,1.5vw,19px)}
+  .terrace-workspace .terrace-card>small{line-height:1.25;font-size:9px}
+  .terrace-workspace .terrace-card-head{font-size:10px;gap:4px}
+  .terrace-workspace .terrace-card .terrace-tag{font-size:8px;padding:4px 6px}
+  .terrace-workspace .terrace-overview > .terrace-two-cols{
+    height:100%;min-height:0;margin:0;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:9px
+  }
+  .terrace-workspace .terrace-panel{min-height:0;margin:0}
+  .terrace-workspace .terrace-overview .terrace-panel{height:100%}
+  .terrace-workspace .terrace-panel .panel-head{min-height:0;padding:9px 12px}
+  .terrace-workspace .terrace-panel .panel-head h2{font-size:13px}
+  .terrace-workspace .terrace-panel .panel-head .eyebrow{font-size:9px;margin-bottom:3px}
+  .terrace-workspace .terrace-flow{padding:clamp(7px,1.4vh,13px) 10px 2px;gap:4px}
+  .terrace-workspace .terrace-flow>div{padding:clamp(7px,1.1vh,11px) 5px}
+  .terrace-workspace .terrace-flow strong{font-size:11px}
+  .terrace-workspace .terrace-flow small{font-size:9px;margin-top:3px}
+  .terrace-workspace .terrace-flow>span{font-size:15px}
+  .terrace-workspace .terrace-footnote{font-size:10px;line-height:1.35;margin:8px 10px}
+  .terrace-workspace .terrace-panel-body{padding:9px 12px}
+  .terrace-workspace .terrace-switch{margin:3px 0 5px;padding:3px;gap:3px}
+  .terrace-workspace .terrace-switch button{padding:7px 9px;font-size:11px}
+  .terrace-workspace .terrace-db-row{font-size:14px;padding:3px 0}
+  .terrace-workspace .terrace-panel-body .terrace-footnote{margin:5px 0}
+  .terrace-workspace .terrace-overview>.terrace-panel:last-child .terrace-panel-body{
+    display:flex;align-items:center;justify-content:space-between;gap:12px
+  }
+  .terrace-workspace .terrace-overview>.terrace-panel:last-child .terrace-text{
+    margin:0;font-size:11px;line-height:1.4;flex:1
+  }
+  .terrace-workspace .terrace-primary{padding:8px 10px;white-space:nowrap;font-size:11px}
+  .terrace-workspace .terrace-pr-panel{height:100%;display:flex;flex-direction:column}
+  .terrace-workspace .terrace-pr-body{min-height:0;flex:1;display:flex;flex-direction:column;gap:7px}
+  .terrace-workspace .terrace-pr-body .terrace-footnote{margin:0}
+  .terrace-workspace .terrace-pr-list{min-height:0;flex:1;gap:6px;overflow:hidden}
+  .terrace-workspace .terrace-pr{padding:9px 11px;margin:0;min-height:0}
+  .terrace-workspace .terrace-pr strong{font-size:11px;line-height:1.35}
+  .terrace-workspace .terrace-pr small{font-size:9px;margin-top:3px}
+  .terrace-workspace .terrace-pr-pager{padding-top:7px;flex-shrink:0}
+  .terrace-workspace .terrace-pr-pager button{padding:6px 10px;font-size:10px}
+  .terrace-workspace .terrace-release{height:100%;min-height:0;margin:0;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+  .terrace-workspace .terrace-release>.terrace-panel{height:100%;display:flex;flex-direction:column}
+  .terrace-workspace .terrace-release .terrace-form{min-height:0;flex:1;gap:clamp(5px,.85vh,10px)}
+  .terrace-workspace .terrace-release .terrace-form>label:not(.terrace-check){font-size:11px}
+  .terrace-workspace .terrace-release .terrace-form select{padding:7px;font-size:11px}
+  .terrace-workspace .terrace-release .terrace-form .terrace-footnote{margin:0}
+  .terrace-workspace .terrace-release .terrace-form>input[type=range]{margin:0}
+  .terrace-workspace .terrace-release .terrace-risk{padding:9px;gap:5px}
+  .terrace-workspace .terrace-release .terrace-risk strong{font-size:17px}
+  .terrace-workspace .terrace-release .terrace-check{font-size:11px}
+  .terrace-workspace .terrace-release .terrace-decision{padding:8px;font-size:11px}
+  .terrace-workspace .terrace-release .terrace-text{margin:0;font-size:11px;line-height:1.4}
+  .terrace-workspace .terrace-release .refresh-button{height:32px}
+}
+/* Shorter or narrower screens must remain scrollable, never mask controls. */
+@media(max-width:1023px), (max-height:699px){
+  .terrace-one-view .terrace-content{height:auto;overflow:visible}
+}
