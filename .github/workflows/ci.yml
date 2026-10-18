@@ -34,7 +34,6 @@ jobs:
             sleep 1
           done
           if [ "$ready" -ne 1 ]; then cat /tmp/control-room-start.log; exit 1; fi
-          grep -q 'Database Overview' /tmp/hc-connect.html
           grep -q 'Status pengembangan website' /tmp/hc-connect.html
           grep -q 'Temuan terbaru dan pekerjaan belum selesai' /tmp/hc-connect.html
           grep -q '<h1>HC Connect</h1>' /tmp/hc-connect.html
@@ -43,7 +42,7 @@ jobs:
           grep -q 'ONE VIEW' /tmp/hc-connect.html
           grep -q 'href="/database/hasnaria-terrace"' /tmp/hc-connect.html
           curl -sS --fail --location --max-time 20 http://127.0.0.1:3000/database -o /tmp/database-legacy.html
-          grep -q 'Database Overview' /tmp/database-legacy.html
+          grep -q 'Status pengembangan website' /tmp/database-legacy.html
           curl -sS --fail --max-time 30 http://127.0.0.1:3000/database/hasnaria-terrace -o /tmp/hasnaria-terrace.html
           grep -q 'Hasnaria Terrace' /tmp/hasnaria-terrace.html
           grep -q 'Pull Requests' /tmp/hasnaria-terrace.html

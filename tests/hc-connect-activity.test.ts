@@ -45,10 +45,12 @@ test("HC Overview reads its own project, classifies errors and backlog, without 
 test("Failed monitoring never appears as zero confirmed bugs or healthy website", async()=>{
   await withMock(url=> url==="https://hcconnect.site/" ? new Response("Down",{status:503}) : new Response("Rate limit",{status:403}),async()=>{
     const d=await loadHcActivity();
-    assert.equal(d.github.runsSource,"unavailable");
-    assert.equal(d.github.issuesSource,"unavailable");
+    assert.equal(d.github.runsSource,"snapshot");
+    assert.equal(d.github.issuesSource,"snapshot");
     assert.equal(d.website.state,"error");
     assert.equal(d.website.code,503);
+    assert.equal(d.github.prs.length,7);
+    assert.ok(d.signals.some(s=>s.category==="backlog"));
     assert.ok(d.signals.some(s=>s.id==="site-http"));
   });
 });

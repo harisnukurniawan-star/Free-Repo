@@ -40,10 +40,10 @@ export default function HcOperationsOverview({ activity }: { activity: HcActivit
       <Kpi label="WEB PRODUKSI" value={activity.website.state === "online" ? "Online" : activity.website.state === "error" ? "HTTP error" : "Tidak terpantau"}
         meta={activity.website.code ? "HTTP " + activity.website.code + " · " + dateText(activity.website.checkedAt) : "Pemeriksaan tidak tersedia"}
         tone={activity.website.state === "online" ? "ok" : activity.website.state === "error" ? "warn" : undefined} />
-      <Kpi label="PEKERJAAN TERBUKA" value={gh.prsSource === "live" ? gh.prs.length + " PR" : "Belum tersedia"}
-        meta={gh.prsSource === "live" ? "GitHub · branch pekerjaan yang belum merged" : "Sumber GitHub PR tidak terhubung"} />
-      <Kpi label="WORKFLOW TERBARU" value={gh.runsSource === "live" ? active.length ? active.length + " berjalan" : latestRun ? stateName(latestRun.state, latestRun.conclusion) : "Belum ada" : "Tidak terpantau"}
-        meta={gh.runsSource === "live" && latestRun ? stageName(latestRun.name) + " · " + dateText(latestRun.at) : "Status GitHub Actions belum tersedia"} />
+      <Kpi label="PEKERJAAN TERBUKA" value={gh.prsSource !== "unavailable" ? gh.prs.length + " PR" : "Belum tersedia"}
+        meta={gh.prsSource === "live" ? "GitHub live · belum merged" : gh.prsSource === "snapshot" ? "Snapshot 18 Okt · belum tentu masih terbuka" : "Sumber GitHub PR tidak terhubung"} />
+      <Kpi label="WORKFLOW TERBARU" value={gh.runsSource !== "unavailable" ? (gh.runsSource === "snapshot" ? "Snapshot: " : "") + (active.length ? active.length + " berjalan" : latestRun ? stateName(latestRun.state, latestRun.conclusion) : "Belum ada") : "Tidak terpantau"}
+        meta={gh.runsSource !== "unavailable" && latestRun ? (gh.runsSource === "snapshot" ? "Snapshot 18 Okt · " : "") + stageName(latestRun.name) + " · " + dateText(latestRun.at) : "Status GitHub Actions belum tersedia"} />
       <Kpi label="TEMUAN & BACKLOG" value={ghComplete ? activity.signals.length + " temuan" : "Parsial"}
         meta={ghComplete ? failed + " sinyal error · " + gh.issuesCount + " GitHub issue · " + activity.signals.filter(s => s.category === "backlog").length + " backlog" : "Sumber yang gagal tidak dihitung sebagai nol"}
         tone={failed ? "warn" : undefined} />
@@ -51,13 +51,13 @@ export default function HcOperationsOverview({ activity }: { activity: HcActivit
 
     <div className="hc-ops-middle">
       <article className="panel hc-ops-section">
-        <div className="panel-head"><div><span className="eyebrow">WEB DEVELOPMENT</span><h2>Pengembangan & progres terbaru</h2></div><span className="hc-ops-source">{gh.commitsSource === "live" ? "GITHUB · LIVE" : "Belum terhubung"}</span></div>
+        <div className="panel-head"><div><span className="eyebrow">WEB DEVELOPMENT</span><h2>Pengembangan & progres terbaru</h2></div><span className="hc-ops-source">{gh.commitsSource === "live" ? "GITHUB · LIVE" : gh.commitsSource === "snapshot" ? "SNAPSHOT · 18 OKT" : "Belum terhubung"}</span></div>
         <div className="hc-ops-panel-body">
           {gh.commits.slice(0, 3).map(c => <a className="hc-ops-progress-row" key={c.sha} href={c.url} target="_blank" rel="noopener noreferrer">
             <span className="hc-ops-sha">{c.sha}</span><div><strong>{c.title}</strong><small>Commit · {dateText(c.at)}</small></div><span aria-hidden="true">↗</span>
           </a>)}
           {gh.commits.length === 0 && <div className="hc-ops-empty">Riwayat perubahan belum dapat diperbarui.</div>}
-          <div className="hc-ops-development-footer"><span>{gh.prsSource === "live" ? gh.prs.length + " PR menunggu review/merge" : "PR: tidak terpantau"}</span>
+          <div className="hc-ops-development-footer"><span>{gh.prsSource === "live" ? gh.prs.length + " PR menunggu review/merge" : gh.prsSource === "snapshot" ? gh.prs.length + " PR · snapshot 18 Okt" : "PR: tidak terpantau"}</span>
           <a href="https://github.com/jakgunn20-maker/hcbp-hub/pulls" target="_blank" rel="noopener noreferrer">Buka pekerjaan ↗</a></div>
         </div>
       </article>
@@ -66,7 +66,7 @@ export default function HcOperationsOverview({ activity }: { activity: HcActivit
         <div className="hc-ops-panel-body">
           <div className="hc-ops-operating-row"><div><strong>HC Connect · Website</strong><small>Pemeriksaan respons URL publik, bukan uji transaksi</small></div><span className={activity.website.state === "online" ? "hc-ops-good" : "hc-ops-muted"}>{activity.website.code ? "HTTP " + activity.website.code : "Tidak tersedia"}</span></div>
           {operations.map(x => <div className="hc-ops-operating-row" key={x.id}>
-            <div><strong>{x.title}</strong><small>{x.run ? "Dijalankan " + dateText(x.run.at) : "Tidak ada data run dalam histori terambil"}</small></div>
+            <div><strong>{x.title}</strong><small>{x.run ? (gh.runsSource === "snapshot" ? "Snapshot terakhir " : "Dijalankan ") + dateText(x.run.at) : "Tidak ada data run dalam histori terambil"}</small></div>
             {x.run ? <a className={x.run.conclusion === "success" ? "hc-ops-good" : "hc-ops-muted"} href={x.run.url} target="_blank" rel="noopener noreferrer">{stateName(x.run.state, x.run.conclusion)} ↗</a> : <span className="hc-ops-muted">Belum terpantau</span>}
           </div>)}
           <div className="hc-ops-operating-row"><div><strong>Vercel · Production</strong><small>Metadata deployment, bukan pemeriksaan seluruh fungsi</small></div><span className={activity.vercel.source === "live" && activity.vercel.production?.state === "READY" ? "hc-ops-good" : "hc-ops-muted"}>{activity.vercel.source === "live" ? activity.vercel.production?.state || "Tidak ada produksi" : "Belum terhubung"}</span></div>
@@ -88,11 +88,11 @@ export default function HcOperationsOverview({ activity }: { activity: HcActivit
           </div>}
         </div>
         <div className="hc-ops-alert-footer">
-          <span>Gagal CI ≠ error produksi · PR backlog ≠ bug terbukti · sumber: GitHub dan HTTP</span>
+          <span>Gagal CI ≠ error produksi · PR backlog ≠ bug terbukti · snapshot bertanggal</span>
           <div className="hc-ops-pager"><button type="button" disabled={safePage === 0} onClick={() => setPage(p => Math.max(0,p-1))}>‹</button><span>{safePage + 1}/{totalPages}</span><button type="button" disabled={safePage >= totalPages - 1} onClick={() => setPage(p => Math.min(totalPages-1,p+1))}>›</button></div>
         </div>
       </div>
     </article>
-    <p className="hc-ops-disclaimer">Pemeriksaan {dateText(activity.checkedAt)} · GitHub diperbarui maksimal setiap 2 menit · OCI HeatWave masih memakai snapshot lama pada tab Storage & Health. Status HTTP / CI tidak menjamin transaksi bebas error.</p>
+    <p className="hc-ops-disclaimer">Pemeriksaan {dateText(activity.checkedAt)} · GitHub live diperbarui maksimal setiap 2 menit; snapshot terakhir diverifikasi 18 Okt 2026 · OCI HeatWave masih memakai snapshot lama pada tab Storage & Health. Status HTTP / CI tidak menjamin transaksi bebas error.</p>
   </div>;
 }

@@ -1,6 +1,6 @@
 import "server-only";
 
-export type HcSource = "live" | "unavailable";
+export type HcSource = "live" | "snapshot" | "unavailable";
 export type HcRun = { id: number; name: string; branch: string; state: string; conclusion: string; at: string; url: string };
 export type HcPr = { number: number; title: string; draft: boolean; updatedAt: string; url: string };
 export type HcCommit = { sha: string; title: string; at: string; url: string };
@@ -19,6 +19,30 @@ const obj = (v: unknown): Record<string, unknown> => v && typeof v === "object" 
 const str = (v: unknown): string => typeof v === "string" ? v : "";
 const safeUrl = (url: unknown) => str(url).startsWith(githubHtml) ? str(url) : "https://github.com/" + repo;
 const stamp = () => new Date().toISOString();
+
+/* Last verified from HC Connect GitHub on 18 October 2026.
+   The snapshot is not real-time; never elevate it to a live health claim. */
+export const verifiedSnapshotAt = "2026-10-18T08:06:20Z";
+const lastPrs: HcPr[] = [
+  { number: 397, title: "Fix Co-Hub Center canonical mission bootstrap", draft: false, updatedAt: "2026-10-01T11:01:29Z", url: githubHtml + "pull/397" },
+  { number: 385, title: "Provision invoke-only OCI identity for Control Room relay", draft: true, updatedAt: "2026-09-28T04:25:40Z", url: githubHtml + "pull/385" },
+  { number: 384, title: "Diagnose Control Room OCI R2 and gateway capabilities", draft: true, updatedAt: "2026-09-28T04:12:25Z", url: githubHtml + "pull/384" },
+  { number: 369, title: "Stage OCI Vercel cutover preview", draft: false, updatedAt: "2026-09-26T13:12:57Z", url: githubHtml + "pull/369" },
+  { number: 367, title: "Build self-hosted OCI HeatWave gateway", draft: true, updatedAt: "2026-09-24T16:58:17Z", url: githubHtml + "pull/367" },
+  { number: 366, title: "Prepare HC Connect for OCI HeatWave TLS cutover", draft: false, updatedAt: "2026-09-24T07:48:48Z", url: githubHtml + "pull/366" },
+  { number: 326, title: "Widen mission validation modal on desktop", draft: false, updatedAt: "2026-09-23T05:07:06Z", url: githubHtml + "pull/326" },
+];
+const lastRuns: HcRun[] = [
+  { id: 39096656498, name: "OCI Function API latency watch", branch: "main", state: "completed", conclusion: "success", at: "2026-10-18T04:18:54Z", url: githubHtml + "actions/runs/39096656498" },
+  { id: 39080963653, name: "OCI Function API latency watch", branch: "main", state: "completed", conclusion: "success", at: "2026-10-17T23:57:22Z", url: githubHtml + "actions/runs/39080963653" },
+  { id: 39075302193, name: "OCI HeatWave daily backup monitor", branch: "main", state: "completed", conclusion: "success", at: "2026-10-17T22:29:49Z", url: githubHtml + "actions/runs/39075302193" },
+];
+const lastCommits: HcCommit[] = [
+  { sha: "ee01c98a", title: "Wellness Program: split charts and ranking into two paginated detail pages (#445)", at: "2026-10-13T04:26:48Z", url: githubHtml + "commit/ee01c98a5279795a16b5536d2638b14387ecdb87" },
+  { sha: "a166dcc6", title: "Fix Wellness one-view on short desktop viewports / Windows display scaling (#444)", at: "2026-10-13T04:17:32Z", url: githubHtml + "commit/a166dcc64e197618dadfee3ce235e54903706282" },
+  { sha: "edd66aa6", title: "Wellness Program: one-view dashboard at 100% desktop zoom (#443)", at: "2026-10-13T03:54:06Z", url: githubHtml + "commit/edd66aa621e0e114977ec8c85d33e57bebb9c875" },
+];
+
 async function request(url: string, token?: string): Promise<unknown> {
   const response = await fetch(url, {
     headers: { Accept: "application/vnd.github+json", "User-Agent": "Control-Room-HC-ReadOnly", ...(token ? { Authorization: "Bearer " + token } : {}) },
@@ -37,7 +61,7 @@ async function pullRequests() {
       return { number: Number(p.number), title: str(p.title).slice(0,170), draft: p.draft === true,
         updatedAt: str(p.updated_at), url: safeUrl(p.html_url) };
     }).filter(p => Number.isSafeInteger(p.number) && p.number > 0 && p.url.endsWith("/pull/" + p.number)) };
-  } catch { return { source: "unavailable" as const, rows: [] as HcPr[] }; }
+  } catch { return { source: "snapshot" as const, rows: lastPrs }; }
 }
 async function workflows() {
   try {
@@ -48,7 +72,7 @@ async function workflows() {
       return { id: Number(r.id), name: str(r.name).slice(0,130), branch: str(r.head_branch).slice(0,110),
         state: str(r.status), conclusion: str(r.conclusion), at: str(r.created_at), url: safeUrl(r.html_url) };
     }).filter(r => Number.isSafeInteger(r.id) && r.id > 0 && r.at) };
-  } catch { return { source: "unavailable" as const, rows: [] as HcRun[] }; }
+  } catch { return { source: "snapshot" as const, rows: lastRuns }; }
 }
 async function issues() {
   try {
@@ -59,7 +83,7 @@ async function issues() {
       id: "issue-" + Number(issue.number), category: "issue", title: "#" + Number(issue.number) + " · " + str(issue.title).slice(0,150),
       detail: "Isu GitHub belum ditutup · perlu triase operasional", at: str(issue.updated_at), url: safeUrl(issue.html_url),
     })) };
-  } catch { return { source: "unavailable" as const, count: 0, rows: [] as HcSignal[] }; }
+  } catch { return { source: "snapshot" as const, count: 0, rows: [] as HcSignal[] }; }
 }
 async function commits() {
   try {
@@ -70,7 +94,7 @@ async function commits() {
       return { sha: str(c.sha).slice(0,8), title: str(detail.message).split("\n")[0].slice(0,160),
         at: str(author.date), url: safeUrl(c.html_url) };
     }).filter(c => c.sha && c.at) };
-  } catch { return { source: "unavailable" as const, rows: [] as HcCommit[] }; }
+  } catch { return { source: "snapshot" as const, rows: lastCommits }; }
 }
 async function website(): Promise<HcActivity["website"]> {
   const checkedAt = stamp();
