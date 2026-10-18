@@ -13,7 +13,7 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import DatabaseSidebar from "@/app/components/DatabaseSidebar";
 import type { DbHealth, DbOverview, DbSchema, DbTable } from "@/types/database";
 
 type TableNodeData = { table: DbTable; selected: boolean; dimmed: boolean };
@@ -194,27 +194,7 @@ export default function DatabaseDashboard() {
 
   return (
     <main className="control-room">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark">C</div>
-          <div>
-            <strong>CONTROL ROOM</strong>
-            <span>Operations Console</span>
-          </div>
-        </div>
-        <nav>
-          <Link className="nav-item active" href="/database"><span>▦</span> Database</Link>
-          <Link className="nav-item" href="/ai-room"><span>✦</span> AI ROOM</Link>
-          <button className="nav-item disabled"><span>◌</span> Usage & Cost <small>Soon</small></button>
-        </nav>
-        <div className="side-foot">
-          <span className={`status-dot ${overview?.connected ? "online" : "offline"}`} />
-          <div>
-            <strong>{overview?.connected ? "OCI metadata ready" : "OCI unavailable"}</strong>
-            <small>{snapshotMode ? "Private snapshot" : "Direct metadata"}</small>
-          </div>
-        </div>
-      </aside>
+      <DatabaseSidebar mode="hc" ociConnected={Boolean(overview?.connected)} ociSnapshot={snapshotMode} />
 
       <section className="workspace">
         <header className="topbar">
