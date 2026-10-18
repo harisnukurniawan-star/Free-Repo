@@ -563,3 +563,83 @@ a.nav-item{text-decoration:none}
  .ops-operation-line{align-items:flex-start}
  .ops-operation-line>span{max-width:47%;white-space:normal}
 }
+
+
+/* HC Connect web-development & live-operations overview; OCI schema remains in its own tabs. */
+.hc-ops-layout{display:grid;min-width:0;min-height:0;grid-template-rows:minmax(0,.90fr) minmax(0,1.85fr) minmax(0,1.85fr) auto;gap:9px}
+.hc-ops-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;min-height:0}
+.hc-ops-kpi{display:flex;min-width:0;flex-direction:column;justify-content:center;gap:5px;padding:11px 13px;border:1px solid #e5e7eb;border-radius:12px;background:#fff}
+.hc-ops-kpi>span{font-size:9px;color:#64748b;letter-spacing:.09em;font-weight:750}
+.hc-ops-kpi>strong{font-size:clamp(15px,1.65vw,23px);color:#142642;overflow-wrap:anywhere}
+.hc-ops-kpi>small{font-size:10px;color:#64748b;line-height:1.35}
+.hc-ops-kpi-ok>strong{color:#047857}
+.hc-ops-kpi-warn>strong{color:#b45309}
+.hc-ops-middle{display:grid;grid-template-columns:1fr 1.05fr;gap:9px;min-height:0}
+.hc-ops-section{min-width:0;min-height:0;display:flex;flex-direction:column}
+.hc-ops-section>.panel-head{flex-shrink:0}
+.hc-ops-section>.panel-head h2{font-size:13px}
+.hc-ops-source{border:1px solid #e5e7eb;border-radius:15px;padding:5px 7px;color:#64748b;font-size:9px;white-space:nowrap}
+.hc-ops-panel-body{display:flex;flex:1;min-height:0;flex-direction:column;gap:5px;padding:9px 12px}
+.hc-ops-progress-row{display:flex;align-items:center;gap:8px;min-width:0;padding:6px 8px;border:1px solid #e9eef5;border-radius:8px;background:#f8fafc;color:#334155;text-decoration:none}
+.hc-ops-progress-row:hover{border-color:#bfdbfe}
+.hc-ops-sha{font-size:10px;color:#2563eb;font-weight:800}
+.hc-ops-progress-row>div{flex:1;min-width:0}
+.hc-ops-progress-row strong,.hc-ops-progress-row small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hc-ops-progress-row strong{font-size:10.5px}
+.hc-ops-progress-row small{color:#64748b;font-size:9px;margin-top:3px}
+.hc-ops-development-footer{display:flex;justify-content:space-between;gap:9px;align-items:center;font-size:10px;color:#64748b;margin-top:auto}
+.hc-ops-development-footer>a,.hc-ops-alert-row>a{color:#2563eb;font-weight:700;text-decoration:none;white-space:nowrap;font-size:10px}
+.hc-ops-operating-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid #eef2f7}
+.hc-ops-operating-row:last-child{border:0}
+.hc-ops-operating-row>div{min-width:0;flex:1}
+.hc-ops-operating-row strong,.hc-ops-operating-row small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hc-ops-operating-row strong{font-size:10px;color:#334155}
+.hc-ops-operating-row small{font-size:9px;color:#94a3b8;margin-top:3px}
+.hc-ops-operating-row>span,.hc-ops-operating-row>a{flex-shrink:0;border-radius:7px;padding:5px 7px;text-align:right;font-size:9px;font-weight:750;text-decoration:none;max-width:48%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hc-ops-good{background:#ecfdf5;border:1px solid #a7f3d0;color:#047857}
+.hc-ops-muted{background:#f8fafc;border:1px solid #e2e8f0;color:#64748b}
+.hc-ops-filters{display:flex;gap:3px}
+.hc-ops-filters>button,.hc-ops-pager>button{font-size:9px;color:#64748b;background:#eef2f7;border:0;border-radius:6px;padding:6px 8px;cursor:pointer}
+.hc-ops-filters>button.selected{background:#dbeafe;color:#1d4ed8;font-weight:750}
+.hc-ops-alert-body{flex:1;min-height:0;display:flex;flex-direction:column;padding:7px 12px}
+.hc-ops-alert-list{display:flex;flex:1;min-height:0;flex-direction:column;gap:5px}
+.hc-ops-alert-row{display:flex;align-items:center;gap:9px;border:1px solid #e5e7eb;border-radius:8px;padding:6px 8px}
+.hc-ops-alert-row>div{flex:1;min-width:0}
+.hc-ops-alert-row strong,.hc-ops-alert-row small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hc-ops-alert-row strong{font-size:10px;color:#334155}
+.hc-ops-alert-row small{font-size:9px;color:#64748b;margin-top:3px}
+.hc-ops-alert-chip{font-size:8px;font-weight:750;border-radius:5px;padding:5px 7px;white-space:nowrap}
+.hc-ops-error{background:#fef2f2;color:#b91c1c}
+.hc-ops-issue{background:#fffbeb;color:#92400e}
+.hc-ops-backlog{background:#eff6ff;color:#1d4ed8}
+.hc-ops-alert-time{font-size:9px;white-space:nowrap;color:#64748b}
+.hc-ops-alert-footer{display:flex;justify-content:space-between;gap:9px;align-items:center;font-size:9px;color:#64748b;padding-top:6px}
+.hc-ops-pager{display:flex;align-items:center;gap:4px;white-space:nowrap}
+.hc-ops-pager>button{padding:4px 8px}
+.hc-ops-pager>button:disabled{cursor:default;opacity:.4}
+.hc-ops-empty{padding:11px;color:#64748b;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;font-size:11px}
+.hc-ops-disclaimer{font-size:9px;color:#64748b;line-height:1.35;margin:0}
+@media(min-width:1024px) and (min-height:700px){
+  .control-room.terrace-one-view.hc-one-view>.terrace-workspace.hc-workspace.hc-ops-mode{grid-template-rows:auto auto auto minmax(0,1fr) auto}
+  .hc-ops-mode .hc-content{height:100%;min-height:0}
+  .hc-ops-mode .hc-ops-layout{height:100%;grid-template-rows:minmax(0,.88fr) minmax(0,1.76fr) minmax(0,1.74fr) auto;gap:7px}
+  .hc-ops-mode .hc-ops-kpi{padding:9px 11px;gap:3px}
+  .hc-ops-mode .hc-ops-section>.panel-head{padding:7px 11px}
+  .hc-ops-mode .hc-ops-panel-body{padding:7px 10px;gap:4px}
+  .hc-ops-mode .hc-ops-progress-row{padding:5px 8px}
+  .hc-ops-mode .hc-ops-alert-body{padding:6px 10px}
+  .hc-ops-mode .hc-ops-alert-row{padding:5px 8px}
+}
+@media(max-width:1023px), (max-height:699px){
+  .hc-ops-mode .hc-ops-layout{grid-template-rows:auto;height:auto}
+  .hc-ops-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .hc-ops-middle{grid-template-columns:1fr}
+}
+@media(max-width:600px){
+  .hc-ops-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .hc-ops-alert-time{display:none}
+  .hc-ops-section>.panel-head{flex-wrap:wrap}
+  .hc-ops-operating-row>span,.hc-ops-operating-row>a{max-width:44%;white-space:normal}
+  .hc-ops-kpi{padding:9px}
+  .hc-ops-alert-footer{flex-wrap:wrap}
+}
