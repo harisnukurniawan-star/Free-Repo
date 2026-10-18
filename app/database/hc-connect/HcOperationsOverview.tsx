@@ -2,6 +2,10 @@
 
 import { useMemo, useState } from "react";
 import type { HcActivity, HcSignal } from "@/lib/hc-connect-activity";
+import ArchitectureLiveStatus from "@/app/components/ArchitectureLiveStatus";
+import type { HasnariaActivity } from "@/lib/hasnaria-activity";
+import type { HasnariaData } from "@/lib/hasnaria-monitoring";
+import type { DbOverview } from "@/types/database";
 
 const dateText = (value: string) => {
   if (!value || !Number.isFinite(Date.parse(value))) return "—";
@@ -20,7 +24,8 @@ function AlertRow({ signal }: { signal: HcSignal }) {
     <a href={signal.url} target="_blank" rel="noopener noreferrer" aria-label={"Lihat detail " + signal.title}>Detail ↗</a>
   </div>;
 }
-export default function HcOperationsOverview({ activity }: { activity: HcActivity }) {
+export default function HcOperationsOverview({ activity, hasnariaActivity, hasnariaData, overview }: { activity: HcActivity; hasnariaActivity: HasnariaActivity; hasnariaData: HasnariaData; overview: DbOverview | null }) {
+  const [visualMode,setVisualMode] = useState<"architecture"|"activity">("architecture");
   const [filter, setFilter] = useState<"all" | "error" | "issue" | "backlog">("all");
   const [page, setPage] = useState(0);
   const { github: gh } = activity;
@@ -49,6 +54,9 @@ export default function HcOperationsOverview({ activity }: { activity: HcActivit
         tone={failed ? "warn" : undefined} />
     </div>
 
+    <div className="hc-ops-visual-slot">
+      <div className="live-arch-switch"><button type="button" aria-pressed={visualMode==="architecture"} onClick={()=>setVisualMode("architecture")}>Architecture &amp; Live Status</button><button type="button" aria-pressed={visualMode==="activity"} onClick={()=>setVisualMode("activity")}>Aktivitas Detail</button><small>Tap node untuk detail sumber/status</small></div>
+      {visualMode==="architecture" ? <ArchitectureLiveStatus hc={activity} hasnaria={hasnariaActivity} hasData={hasnariaData} oci={overview}/> :
     <div className="hc-ops-middle">
       <article className="panel hc-ops-section">
         <div className="panel-head"><div><span className="eyebrow">WEB DEVELOPMENT</span><h2>Pengembangan & progres terbaru</h2></div><span className="hc-ops-source">{gh.commitsSource === "live" ? "GITHUB · LIVE" : gh.commitsSource === "snapshot" ? "SNAPSHOT · 18 OKT" : "Belum terhubung"}</span></div>
@@ -73,6 +81,8 @@ export default function HcOperationsOverview({ activity }: { activity: HcActivit
           <div className="hc-ops-operating-row"><div><strong>Runtime error produksi</strong><small>Belum ada koneksi telemetry error server/browser pada dashboard</small></div><span className="hc-ops-muted">Belum terhubung</span></div>
         </div>
       </article>
+    </div>
+    }
     </div>
     <article className="panel hc-ops-section hc-ops-alerts">
       <div className="panel-head"><div><span className="eyebrow">BUG, ERROR & BACKLOG</span><h2>Temuan terbaru dan pekerjaan belum selesai</h2></div>
