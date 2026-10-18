@@ -17,7 +17,7 @@ jobs:
       - run: bash -n scripts/oci-private-bucket-prepare.sh scripts/oci-production-bucket-prepare.sh && node --check scripts/verify-oci-storage.mjs && node --check scripts/verify-oci-native.mjs
       - run: npm test
       - run: npx eslint app/ai-room app/api/ai-room lib/ai-room-access.ts lib/ai-room-content-policy.ts lib/ai-room-jobs.ts lib/ai-room-private-auth.ts lib/ai-room-private-storage.ts lib/ai-room-native-objects.ts lib/ai-room-native-bridge.ts lib/ai-room-oci-safe-logger.ts lib/video-engine.ts lib/wan-models.ts tests/ai-room-mature-mode.test.ts tests/ai-room-private-security.test.ts tests/ai-room-oci-native.test.ts tests/ai-room-oci-probe.test.ts app/api/ai-room/videos
-      - run: npx eslint app/database/DatabaseDashboard.tsx app/components/DatabaseSidebar.tsx app/database/hasnaria-terrace lib/hasnaria-monitoring.ts lib/hasnaria-activity.ts tests/hasnaria-terrace.test.ts tests/hasnaria-activity.test.ts
+      - run: npx eslint app/database/DatabaseDashboard.tsx app/components/DatabaseSidebar.tsx app/database/hasnaria-terrace lib/hasnaria-monitoring.ts lib/hasnaria-activity.ts tests/hasnaria-terrace.test.ts tests/hasnaria-activity.test.ts app/database/hc-connect/HcOperationsOverview.tsx lib/hc-connect-activity.ts tests/hc-connect-activity.test.ts
       - run: npm run build
       - name: Smoke test database routes and preserved OCI API
         run: |
@@ -35,7 +35,8 @@ jobs:
           done
           if [ "$ready" -ne 1 ]; then cat /tmp/control-room-start.log; exit 1; fi
           grep -q 'Database Overview' /tmp/hc-connect.html
-          grep -q 'Relational view' /tmp/hc-connect.html
+          grep -q 'Status pengembangan website' /tmp/hc-connect.html
+          grep -q 'Temuan terbaru dan pekerjaan belum selesai' /tmp/hc-connect.html
           grep -q '<h1>HC Connect</h1>' /tmp/hc-connect.html
           grep -q 'Schema Map' /tmp/hc-connect.html
           grep -q 'Storage &amp; Health' /tmp/hc-connect.html

@@ -14,6 +14,9 @@ import {
 } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import DatabaseSidebar from "@/app/components/DatabaseSidebar";
+import HcOperationsOverview from "@/app/database/hc-connect/HcOperationsOverview";
+import type { HcActivity } from "@/lib/hc-connect-activity";
+import { useRouter } from "next/navigation";
 import type { DbHealth, DbOverview, DbSchema, DbTable } from "@/types/database";
 
 type TableNodeData = { table: DbTable; selected: boolean; dimmed: boolean };
@@ -90,7 +93,8 @@ function buildPositions(tables: DbTable[]) {
   );
 }
 
-export default function DatabaseDashboard() {
+export default function DatabaseDashboard({ activity }: { activity: HcActivity }) {
+  const router = useRouter();
   const [overview, setOverview] = useState<DbOverview | null>(null);
   const [schema, setSchema] = useState<DbSchema>({ tables: [], relations: [] });
   const [health, setHealth] = useState<DbHealth | null>(null);
@@ -127,6 +131,11 @@ export default function DatabaseDashboard() {
       window.clearInterval(id);
     };
   }, [loadAll]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => { if (document.visibilityState === "visible") router.refresh(); }, 120000);
+    return () => window.clearInterval(id);
+  }, [router]);
 
   const selectedTable = schema.tables.find((t) => t.name === selected) || null;
   const relatedTables = useMemo(() => {
@@ -197,6 +206,7 @@ export default function DatabaseDashboard() {
   const snapshotMode = overview?.mode === "snapshot";
 
 
+  const refreshCurrent = () => { void loadAll(); router.refresh(); };
   const [hcTab, setHcTab] = useState<"overview" | "schema" | "storage">("overview");
   const renderSchemaPanel = (full: boolean) => (
     <section className={`panel schema-panel hc-schema-panel ${full ? "hc-schema-full" : "hc-schema-overview"}`}>
@@ -281,26 +291,27 @@ export default function DatabaseDashboard() {
   return (
     <main className="control-room terrace-one-view hc-one-view">
       <DatabaseSidebar mode="hc" ociConnected={Boolean(overview?.connected)} ociSnapshot={snapshotMode} />
-      <section className="workspace terrace-workspace hc-workspace">
+      <section className={"workspace terrace-workspace hc-workspace " + (hcTab === "overview" ? "hc-ops-mode" : "")}>
         <header className="topbar terrace-topbar hc-topbar">
           <div>
-            <span className="eyebrow">DATABASE / OCI HEATWAVE</span>
+            <span className="eyebrow">{hcTab === "overview" ? "CONTROL ROOM / HC CONNECT" : "DATABASE / OCI HEATWAVE"}</span>
             <h1>HC Connect</h1>
-            <p>Database Overview · Read-only metadata, relasi dan performa MySQL</p>
+            <p>{hcTab === "overview" ? "Status pengembangan website, operasi layanan, dan bug/error terbaru" : "Database Overview · Read-only metadata, relasi dan performa MySQL"}</p>
           </div>
           <div className="top-actions">
             <span className="terrace-zoom-label">ONE VIEW · 100%</span>
-            <span className={`hc-status-pill ${overview?.connected ? (snapshotMode ? "snapshot" : "live") : "offline"}`}>
-              <span aria-hidden="true">●</span> {overview?.connected ? (snapshotMode ? "SNAPSHOT" : "LIVE") : "OFFLINE"}
+            <span className={`hc-status-pill ${hcTab === "overview" ? (activity.website.state === "online" ? "live" : "offline") : overview?.connected ? (snapshotMode ? "snapshot" : "live") : "offline"}`}>
+              <span aria-hidden="true">●</span> {hcTab === "overview" ? (activity.website.state === "online" ? "WEB ONLINE" : "WEB UNVERIFIED") : overview?.connected ? (snapshotMode ? "SNAPSHOT" : "LIVE") : "OFFLINE"}
             </span>
-            <button type="button" className="refresh-button" onClick={loadAll}>↻ Refresh</button>
+            <button type="button" className="refresh-button" onClick={refreshCurrent}>↻ Refresh</button>
           </div>
         </header>
 
         <div className="hc-alerts">
           {lastError && <div role="alert" className="error-banner">{lastError}</div>}
-          {overview?.message && <div className="info-banner">{overview.message}</div>}
-          {!overview?.message && !lastError && <div className="info-banner">Read-only OCI metadata. Tidak ada perubahan atau penyimpanan isi tabel database dari Control Room.</div>}
+          {hcTab !== "overview" && overview?.message && <div className="info-banner">{overview.message}</div>}
+          {hcTab === "overview" && <div className="info-banner">Pemantauan read-only HC Connect · GitHub, workflow pemantauan OCI, dan respons website. Telemetri runtime belum lengkap; status database snapshot tersedia di Storage &amp; Health.</div>}
+          {hcTab !== "overview" && !overview?.message && !lastError && <div className="info-banner">Read-only OCI metadata. Tidak ada perubahan atau penyimpanan isi tabel database dari Control Room.</div>}
         </div>
 
         <div className="terrace-tabs hc-tabs" role="tablist" aria-label="HC Connect sections">
@@ -313,7 +324,7 @@ export default function DatabaseDashboard() {
           ))}
         </div>
 
-        <section className="metric-grid hc-metrics" aria-label="Ringkasan OCI Database">
+        {hcTab !== "overview" && <section className="metric-grid hc-metrics" aria-label="Ringkasan OCI Database">
           <article className="metric-card">
             <span>Source</span>
             <strong className={overview?.connected ? "good" : "bad"}>{snapshotMode ? "OCI Snapshot" : overview?.connected ? "Connected" : "Offline"}</strong>
@@ -323,38 +334,10 @@ export default function DatabaseDashboard() {
           <article className="metric-card"><span>Tables</span><strong>{overview?.tableCount ?? "—"}</strong><small>{schema.relations.length} FK relations</small></article>
           <article className="metric-card"><span>Approx. rows</span><strong>{formatNumber(overview?.approximateRows || 0)}</strong><small>InnoDB metadata estimate</small></article>
           <article className="metric-card"><span>Connections</span><strong>{overview?.activeConnections ?? "—"}</strong><small>At snapshot time</small></article>
-        </section>
+        </section>}
 
         <div className="terrace-content hc-content">
-          {hcTab === "overview" && (
-            <div className="hc-summary-grid">
-              {renderSchemaPanel(false)}
-              <div className="hc-side-column">
-                <article className="panel hc-data-panel">
-                  <div className="panel-head"><div><span className="eyebrow">STORAGE</span><h2>Data vs index</h2></div></div>
-                  <div className="composition">
-                    <div className="donut" style={{ background: `conic-gradient(#2563eb ${dataPct}%, #dbe3ee 0)` }}>
-                      <div><strong>{dataPct}%</strong><span>DATA</span></div>
-                    </div>
-                    <div className="legend">
-                      <div><span className="legend-dot data" /><div><small>Data</small><strong>{formatBytes(overview?.dataBytes || 0)}</strong></div></div>
-                      <div><span className="legend-dot index" /><div><small>Indexes</small><strong>{formatBytes(overview?.indexBytes || 0)}</strong></div></div>
-                    </div>
-                  </div>
-                </article>
-                <article className="panel hc-health-panel">
-                  <div className="panel-head"><div><span className="eyebrow">SERVER HEALTH</span><h2>MySQL runtime</h2></div></div>
-                  <div className="hc-health-compact">
-                    <div><span>Uptime</span><strong>{formatUptime(health?.uptimeSeconds || 0)}</strong></div>
-                    {(health?.metrics || []).slice(0, 5).map(m => (
-                      <div key={m.key}><span>{m.label}</span><strong>{formatNumber(m.value)}</strong></div>
-                    ))}
-                  </div>
-                </article>
-              </div>
-            </div>
-          )}
-
+          {hcTab === "overview" && <HcOperationsOverview activity={activity} />}
           {hcTab === "schema" && <div className="hc-schema-view">{renderSchemaPanel(true)}</div>}
 
           {hcTab === "storage" && (
