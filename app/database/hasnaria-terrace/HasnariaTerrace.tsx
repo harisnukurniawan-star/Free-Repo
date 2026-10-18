@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import DatabaseSidebar from "@/app/components/DatabaseSidebar";
-import type { HasnariaData, Source, Status } from "@/lib/hasnaria-monitoring";
+import type { HasnariaData } from "@/lib/hasnaria-monitoring";
+import type { HasnariaActivity } from "@/lib/hasnaria-activity";
+import ActivityOverview from "./ActivityOverview";
 
 type Section = "overview" | "prs" | "release";
 type Scenario = "ui" | "database" | "attendance";
@@ -14,18 +16,11 @@ const recentMerged = [
   { number: 91, title: "Perbaikan GPS dan radius 200 meter" },
   { number: 90, title: "Source guard P0.1–P0.2 dan Owner UI" },
 ];
-const tag = (source: Source) => source === "live" ? "Live saat dimuat" : source === "snapshot" ? "Snapshot 18 Okt" : "Tidak tersedia";
-function StatusCard({ label, status, note }: { label: string; status: Status; note: string }) {
-  return <article className="terrace-card">
-    <div className="terrace-card-head"><span>{label}</span><span className={`terrace-tag ${status.source === "live" ? "terrace-live" : "terrace-static"}`}>{tag(status.source)}</span></div>
-    <strong>{status.value}</strong><small>{status.detail || note}</small>
-  </article>;
-}
-export default function HasnariaTerrace({ data }: { data: HasnariaData }) {
+export default function HasnariaTerrace({ data, activity }: { data: HasnariaData; activity: HasnariaActivity }) {
   const router = useRouter();
   const [busy, startTransition] = useTransition();
+  useEffect(() => { const id = window.setInterval(() => { if (document.visibilityState === "visible") startTransition(() => router.refresh()); }, 120000); return () => window.clearInterval(id); }, [router]);
   const [section, setSection] = useState<Section>("overview");
-  const [environment, setEnvironment] = useState<"production" | "staging">("production");
   const [prView, setPrView] = useState<"open" | "merged">("open");
   const [prPage, setPrPage] = useState(0);
   const [scenario, setScenario] = useState<Scenario>("database");
@@ -35,8 +30,6 @@ export default function HasnariaTerrace({ data }: { data: HasnariaData }) {
   const completed = checks.filter(Boolean).length;
   const risk = Math.max(5, Math.min(100, impact * 11 + complexity * 9 + (scenario === "database" ? 15 : scenario === "attendance" ? 10 : 0) + 10 - (checks[0] ? 13 : 0) - (checks[1] ? 16 : 0) - (checks[2] ? 14 : 0) - (checks[3] ? 10 : 0)));
   const level = risk >= 65 ? "Tinggi" : risk >= 35 ? "Sedang" : "Rendah";
-  const activeDb = environment === "production" ? data.production : data.staging;
-  const activeId = environment === "production" ? "bnnhmtkpdjlgehsvgoda" : "rynnpndtzjwpekbiwiif";
   const prItems = prView === "open" ? data.openPrs : recentMerged.map(p => ({
     ...p,
     url: `https://github.com/ekariashoesanti-alt/Hasnaria-ice-cream/pull/${p.number}`,
@@ -60,49 +53,12 @@ export default function HasnariaTerrace({ data }: { data: HasnariaData }) {
         </header>
         <div className="info-banner">Sumber ditandai secara eksplisit: Live saat dimuat atau Snapshot 18 Okt 2026. Status deployment/health bukan pengganti UAT, audit keamanan, dan pemeriksaan data bisnis.</div>
         <div className="terrace-tabs" role="tablist" aria-label="Hasnaria monitoring sections">
-          {[["overview","Infrastructure"],["prs","Pull Requests"],["release","Release Gate"]].map(([id,title])=>
+          {[["overview","Overview"],["prs","Pull Requests"],["release","Release Gate"]].map(([id,title])=>
             <button key={id} type="button" role="tab" aria-selected={section===id} className={section===id?"selected":""} onClick={()=>setSection(id as Section)}>{title}</button>
           )}
         </div>
         <div className="terrace-content">
-        {section === "overview" && <div className="terrace-overview">
-          <section className="terrace-metrics" aria-label="Hasnaria services">
-            <StatusCard label="GitHub" status={{value:"main",source:data.githubSource,checkedAt:data.checkedAt,detail:data.githubNote}} note="Branch utama" />
-            <StatusCard label="Vercel Production" status={data.vercel} note="hasnaria-business-analyzer" />
-            <StatusCard label="Supabase Production" status={data.production} note="Tokyo" />
-            <StatusCard label="Supabase Staging" status={data.staging} note="Singapore" />
-          </section>
-          <section className="terrace-two-cols">
-            <article className="panel terrace-panel">
-              <div className="panel-head"><div><span className="eyebrow">TOPOLOGY</span><h2>Application Architecture</h2></div></div>
-              <div className="terrace-flow">
-                <div><strong>GitHub</strong><small>Hasnaria-ice-cream · main</small></div>
-                <span aria-hidden="true">→</span><div><strong>Vercel</strong><small>Business Analyzer</small></div>
-                <span aria-hidden="true">→</span><div><strong>Supabase</strong><small>Tokyo / Singapore</small></div>
-              </div>
-              <p className="terrace-footnote">Peta konseptual; jalur koneksi runtime dan isolasi konfigurasi harus diuji secara terpisah.</p>
-            </article>
-            <article className="panel terrace-panel">
-              <div className="panel-head"><div><span className="eyebrow">ENVIRONMENT</span><h2>Database Health</h2></div></div>
-              <div className="terrace-panel-body">
-                <div className="terrace-switch">
-                  <button type="button" className={environment==="production"?"selected":""} onClick={()=>setEnvironment("production")}>Production · Tokyo</button>
-                  <button type="button" className={environment==="staging"?"selected":""} onClick={()=>setEnvironment("staging")}>Staging · Singapore</button>
-                </div>
-                <div className="terrace-db-row"><span>{activeDb.value}</span><span className={`terrace-tag ${activeDb.source === "live"?"terrace-live":"terrace-static"}`}>{tag(activeDb.source)}</span></div>
-                <div className="terrace-id">Project ID: {activeId}</div>
-                <p className="terrace-footnote">{activeDb.detail || "Metadata platform belum tersedia."}</p>
-              </div>
-            </article>
-          </section>
-          <article className="panel terrace-panel">
-            <div className="panel-head"><div><span className="eyebrow">WORKSTREAM</span><h2>Perhatian prioritas</h2></div></div>
-            <div className="terrace-panel-body">
-              <p className="terrace-text">Pantau proteksi relasi Purchase–Stock, review rendering Finance, dan bukti UAT. Status platform sehat tidak membuktikan konsistensi seluruh transaksi ERP.</p>
-              <button type="button" className="terrace-primary" onClick={()=>setSection("prs")}>Periksa pekerjaan terbuka →</button>
-            </div>
-          </article>
-        </div>}
+        {section === "overview" && <ActivityOverview activity={activity} data={data} onOpenPrs={() => setSection("prs")} />}
         {section === "prs" && <article className="panel terrace-panel terrace-pr-panel">
           <div className="panel-head"><div><span className="eyebrow">GITHUB / DELIVERY</span><h2>Pull Request Tracker</h2></div><span className="terrace-tag terrace-static">{data.openPrs.length} Open</span></div>
           <div className="terrace-panel-body terrace-pr-body">
