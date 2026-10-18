@@ -17,4 +17,35 @@ jobs:
       - run: bash -n scripts/oci-private-bucket-prepare.sh scripts/oci-production-bucket-prepare.sh && node --check scripts/verify-oci-storage.mjs && node --check scripts/verify-oci-native.mjs
       - run: npm test
       - run: npx eslint app/ai-room app/api/ai-room lib/ai-room-access.ts lib/ai-room-content-policy.ts lib/ai-room-jobs.ts lib/ai-room-private-auth.ts lib/ai-room-private-storage.ts lib/ai-room-native-objects.ts lib/ai-room-native-bridge.ts lib/ai-room-oci-safe-logger.ts lib/video-engine.ts lib/wan-models.ts tests/ai-room-mature-mode.test.ts tests/ai-room-private-security.test.ts tests/ai-room-oci-native.test.ts tests/ai-room-oci-probe.test.ts app/api/ai-room/videos
+      - run: npx eslint app/components/DatabaseSidebar.tsx app/database/hasnaria-terrace lib/hasnaria-monitoring.ts tests/hasnaria-terrace.test.ts
       - run: npm run build
+      - name: Smoke test database routes and preserved OCI API
+        run: |
+          set -euo pipefail
+          npm run start -- -p 3000 > /tmp/control-room-start.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          ready=0
+          for i in $(seq 1 30); do
+            if curl -sS --fail --max-time 5 http://127.0.0.1:3000/database/hc-connect -o /tmp/hc-connect.html 2>/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then cat /tmp/control-room-start.log; exit 1; fi
+          grep -q 'Database Overview' /tmp/hc-connect.html
+          grep -q 'Relational view' /tmp/hc-connect.html
+          grep -q 'href="/database/hasnaria-terrace"' /tmp/hc-connect.html
+          curl -sS --fail --location --max-time 20 http://127.0.0.1:3000/database -o /tmp/database-legacy.html
+          grep -q 'Database Overview' /tmp/database-legacy.html
+          curl -sS --fail --max-time 30 http://127.0.0.1:3000/database/hasnaria-terrace -o /tmp/hasnaria-terrace.html
+          grep -q 'Hasnaria Terrace' /tmp/hasnaria-terrace.html
+          grep -q 'Pull Requests' /tmp/hasnaria-terrace.html
+          grep -q 'Release Gate' /tmp/hasnaria-terrace.html
+          curl -sS --fail --max-time 10 http://127.0.0.1:3000/api/database/overview -o /tmp/oci-overview.json
+          grep -q '"tableCount"' /tmp/oci-overview.json
+          curl -sS --fail --max-time 10 http://127.0.0.1:3000/api/database/schema -o /tmp/oci-schema.json
+          grep -q '"tables"' /tmp/oci-schema.json
+          curl -sS --fail --max-time 10 http://127.0.0.1:3000/api/database/health -o /tmp/oci-health.json
+          grep -q '"metrics"' /tmp/oci-health.json
