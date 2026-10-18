@@ -1,2 +1,2 @@
-import DatabaseDashboard from "./DatabaseDashboard";
-export default function DatabasePage() { return <DatabaseDashboard />; }
+import { redirect } from "next/navigation";
+export default function DatabasePage() { redirect("/database/hc-connect"); }
