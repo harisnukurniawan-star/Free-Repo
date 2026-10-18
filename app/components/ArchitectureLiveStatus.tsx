@@ -117,7 +117,7 @@ function NodeBox({node,onSelect,selected}:{node:ArchitectureNode;onSelect:(node:
     <em>{node.info}</em>
   </button>;
 }
-function ProjectDiagram({title,items,selected,onSelect}:{title:string;items:ArchitectureNode[];selected:string;onSelect:(node:ArchitectureNode)=>void}) {
+function ProjectDiagram({title,items,selected,onSelect,summary}:{title:string;items:ArchitectureNode[];selected:string;onSelect:(node:ArchitectureNode)=>void;summary:string}) {
   const hc=items.length===4;
   return <article className="live-arch-card">
     <div className="live-arch-card-head"><strong>{title}</strong><span>DIAGRAM STATUS · READ ONLY</span></div>
@@ -135,7 +135,7 @@ function ProjectDiagram({title,items,selected,onSelect}:{title:string;items:Arch
         </div>}
       </div>
     </div>
-    <p>{hc?"OCI backup dan latency adalah monitor workflow; belum membuktikan runtime database.":"Staging ≠ production; status database belum tentu live."}</p>
+    <p>{summary}</p>
   </article>;
 }
 
@@ -145,10 +145,16 @@ export default function ArchitectureLiveStatus(props:Props) {
   const all=[...nodes.hc,...nodes.has];
   const chosen=all.find(n=>n.id===selected);
   const backlog=nodes.hc[0].info+" · "+nodes.has[0].info;
+  const hcFailures=props.hc.signals.filter(s=>s.category==="error").length;
+  const hasCiFailures=props.hasnaria.signals.filter(s=>s.kind==="ci").length;
+  const hcSummary="Sinyal error: "+(props.hc.github.runsSource==="live"?hcFailures:"belum terverifikasi")+
+    " · issue: "+(props.hc.github.issuesSource==="live"?props.hc.github.issuesCount:"belum terverifikasi")+" · runtime belum terhubung";
+  const hasSummary="CI gagal (72 jam): "+(props.hasnaria.actionsSource==="live"?hasCiFailures:"belum terverifikasi")+
+    " · issue: "+(props.hasnaria.issuesSource==="live"?props.hasnaria.issueCount:"belum terverifikasi")+" · runtime belum terhubung";
   return <section className="live-arch" aria-label="Architecture and online live status report">
     <div className="live-arch-pair">
-      <ProjectDiagram title="HC Connect" items={nodes.hc} onSelect={n=>setSelected(n.id===selected?"":n.id)} selected={selected}/>
-      <ProjectDiagram title="Hasnaria Terrace" items={nodes.has} onSelect={n=>setSelected(n.id===selected?"":n.id)} selected={selected}/>
+      <ProjectDiagram title="HC Connect" summary={hcSummary} items={nodes.hc} onSelect={n=>setSelected(n.id===selected?"":n.id)} selected={selected}/>
+      <ProjectDiagram title="Hasnaria Terrace" summary={hasSummary} items={nodes.has} onSelect={n=>setSelected(n.id===selected?"":n.id)} selected={selected}/>
     </div>
     <div className="live-arch-foot">
       <div className="live-arch-legend" aria-label="Legenda status">
