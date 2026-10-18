@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import DatabaseSidebar from "@/app/components/DatabaseSidebar";
 import type { HasnariaData } from "@/lib/hasnaria-monitoring";
 import type { HasnariaActivity } from "@/lib/hasnaria-activity";
-import type { HcActivity } from "@/lib/hc-connect-activity";
 import ActivityOverview from "./ActivityOverview";
 
 type Section = "overview" | "prs" | "release";
@@ -17,7 +16,7 @@ const recentMerged = [
   { number: 91, title: "Perbaikan GPS dan radius 200 meter" },
   { number: 90, title: "Source guard P0.1–P0.2 dan Owner UI" },
 ];
-export default function HasnariaTerrace({ data, activity, hcActivity }: { data: HasnariaData; activity: HasnariaActivity; hcActivity: HcActivity }) {
+export default function HasnariaTerrace({ data, activity }: { data: HasnariaData; activity: HasnariaActivity }) {
   const router = useRouter();
   const [busy, startTransition] = useTransition();
   useEffect(() => { const id = window.setInterval(() => { if (document.visibilityState === "visible") startTransition(() => router.refresh()); }, 120000); return () => window.clearInterval(id); }, [router]);
@@ -59,7 +58,7 @@ export default function HasnariaTerrace({ data, activity, hcActivity }: { data: 
           )}
         </div>
         <div className="terrace-content">
-        {section === "overview" && <ActivityOverview activity={activity} data={data} hcActivity={hcActivity} onOpenPrs={() => setSection("prs")} />}
+        {section === "overview" && <ActivityOverview activity={activity} data={data} onOpenPrs={() => setSection("prs")} />}
         {section === "prs" && <article className="panel terrace-panel terrace-pr-panel">
           <div className="panel-head"><div><span className="eyebrow">GITHUB / DELIVERY</span><h2>Pull Request Tracker</h2></div><span className="terrace-tag terrace-static">{data.openPrs.length} Open</span></div>
           <div className="terrace-panel-body terrace-pr-body">

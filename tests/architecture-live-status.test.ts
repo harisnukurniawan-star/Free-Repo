@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildArchitectureNodes } from "../app/components/ArchitectureLiveStatus";
+import { buildHcArchitectureNodes, buildHasnariaArchitectureNodes } from "../app/components/ArchitectureLiveStatus";
 import type { HcActivity } from "../lib/hc-connect-activity";
 import type { HasnariaActivity } from "../lib/hasnaria-activity";
 import type { HasnariaData } from "../lib/hasnaria-monitoring";
@@ -18,18 +18,27 @@ const hasData:HasnariaData={checkedAt:at,githubSource:"snapshot",githubNote:"Las
   production:{source:"snapshot",value:"ACTIVE_HEALTHY",checkedAt:at},
   staging:{source:"unavailable",value:"Belum terhubung",checkedAt:at}};
 test("architecture never labels stale production/database metadata live healthy",()=>{
-  const result=buildArchitectureNodes({hc,hasnaria,hasData});
-  const tokyo=result.has.find(n=>n.id==="Supabase Tokyo");
+  const hcNodes=buildHcArchitectureNodes({hc});
+  const hasNodes=buildHasnariaArchitectureNodes({hasnaria,hasData});
+  const tokyo=hasNodes.find(n=>n.id==="Supabase Tokyo");
   assert.equal(tokyo?.state,"warning");
   assert.equal(tokyo?.source,"snapshot");
-  assert.equal(result.has.find(n=>n.id==="has-vercel")?.state,"warning");
-  assert.equal(result.has.find(n=>n.id==="Supabase Singapore")?.state,"unknown");
-  assert.equal(result.hc.find(n=>n.id==="hc-vercel")?.state,"unknown");
+  assert.equal(hasNodes.find(n=>n.id==="has-vercel")?.state,"warning");
+  assert.equal(hasNodes.find(n=>n.id==="Supabase Singapore")?.state,"unknown");
+  assert.equal(hcNodes.find(n=>n.id==="hc-vercel")?.state,"unknown");
 });
 test("website HTTP errors remain red; GitHub PRs are warnings, not outages",()=>{
-  const result=buildArchitectureNodes({hc,hasnaria,hasData});
-  assert.equal(result.hc.find(n=>n.id==="hc-website")?.state,"ok");
-  assert.equal(result.hc.find(n=>n.id==="hc-github")?.state,"warning");
-  assert.equal(result.has.find(n=>n.id==="has-web")?.state,"bad");
-  assert.equal(result.has.find(n=>n.id==="has-github")?.state,"warning");
+  const hcNodes=buildHcArchitectureNodes({hc});
+  const hasNodes=buildHasnariaArchitectureNodes({hasnaria,hasData});
+  assert.equal(hcNodes.find(n=>n.id==="hc-website")?.state,"ok");
+  assert.equal(hcNodes.find(n=>n.id==="hc-github")?.state,"warning");
+  assert.equal(hasNodes.find(n=>n.id==="has-web")?.state,"bad");
+  assert.equal(hasNodes.find(n=>n.id==="has-github")?.state,"warning");
+});
+
+test("each project's diagram contains only its own components",()=>{
+  const hcNodes=buildHcArchitectureNodes({hc});
+  const hasNodes=buildHasnariaArchitectureNodes({hasnaria,hasData});
+  assert.deepEqual(hcNodes.map(n=>n.id),["hc-github","hc-vercel","hc-website","hc-oci"]);
+  assert.deepEqual(hasNodes.map(n=>n.id),["has-github","has-vercel","has-web","Supabase Tokyo","Supabase Singapore"]);
 });
