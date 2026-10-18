@@ -3,10 +3,9 @@
 import { useMemo, useState } from "react";
 import type { HasnariaActivity, ActivitySignal } from "@/lib/hasnaria-activity";
 import type { HasnariaData } from "@/lib/hasnaria-monitoring";
-import type { HcActivity } from "@/lib/hc-connect-activity";
 import ArchitectureLiveStatus from "@/app/components/ArchitectureLiveStatus";
 
-type Props = { activity: HasnariaActivity; data: HasnariaData; hcActivity: HcActivity; onOpenPrs: () => void };
+type Props = { activity: HasnariaActivity; data: HasnariaData; onOpenPrs: () => void };
 const when = (value: string) => {
   if (!value || Number.isNaN(Date.parse(value))) return "Waktu tidak tersedia";
   return new Intl.DateTimeFormat("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" }).format(new Date(value)) + " WIB";
@@ -26,7 +25,7 @@ function SignalRow({item}:{item:ActivitySignal}) {
     <a href={item.url} target="_blank" rel="noopener noreferrer">Detail ↗</a>
   </div>;
 }
-export default function ActivityOverview({activity,data,hcActivity,onOpenPrs}:Props) {
+export default function ActivityOverview({activity,data,onOpenPrs}:Props) {
   const [visualMode,setVisualMode] = useState<"architecture"|"activity">("architecture");
   const [filter,setFilter] = useState<"all"|"ci"|"issue">("all");
   const [page,setPage] = useState(0);
@@ -50,7 +49,7 @@ export default function ActivityOverview({activity,data,hcActivity,onOpenPrs}:Pr
 
     <div className="ops-visual-slot">
       <div className="live-arch-switch"><button type="button" aria-pressed={visualMode==="architecture"} onClick={()=>setVisualMode("architecture")}>Architecture &amp; Live Status</button><button type="button" aria-pressed={visualMode==="activity"} onClick={()=>setVisualMode("activity")}>Aktivitas Detail</button><small>Klik node untuk status dan sumber</small></div>
-      {visualMode==="architecture" ? <ArchitectureLiveStatus hc={hcActivity} hasnaria={activity} hasData={data}/> :
+      {visualMode==="architecture" ? <ArchitectureLiveStatus project="hasnaria" hasnaria={activity} hasData={data}/> :
     <div className="ops-middle">
       <article className="panel ops-section ops-development">
         <div className="panel-head"><div><span className="eyebrow">DEVELOPMENT</span><h2>Pekerjaan sedang berjalan</h2></div><span className="ops-source">{sourceTag(data.githubSource)}</span></div>

@@ -3,8 +3,6 @@
 import { useMemo, useState } from "react";
 import type { HcActivity, HcSignal } from "@/lib/hc-connect-activity";
 import ArchitectureLiveStatus from "@/app/components/ArchitectureLiveStatus";
-import type { HasnariaActivity } from "@/lib/hasnaria-activity";
-import type { HasnariaData } from "@/lib/hasnaria-monitoring";
 import type { DbOverview } from "@/types/database";
 
 const dateText = (value: string) => {
@@ -24,7 +22,7 @@ function AlertRow({ signal }: { signal: HcSignal }) {
     <a href={signal.url} target="_blank" rel="noopener noreferrer" aria-label={"Lihat detail " + signal.title}>Detail ↗</a>
   </div>;
 }
-export default function HcOperationsOverview({ activity, hasnariaActivity, hasnariaData, overview }: { activity: HcActivity; hasnariaActivity: HasnariaActivity; hasnariaData: HasnariaData; overview: DbOverview | null }) {
+export default function HcOperationsOverview({ activity, overview }: { activity: HcActivity; overview: DbOverview | null }) {
   const [visualMode,setVisualMode] = useState<"architecture"|"activity">("architecture");
   const [filter, setFilter] = useState<"all" | "error" | "issue" | "backlog">("all");
   const [page, setPage] = useState(0);
@@ -56,7 +54,7 @@ export default function HcOperationsOverview({ activity, hasnariaActivity, hasna
 
     <div className="hc-ops-visual-slot">
       <div className="live-arch-switch"><button type="button" aria-pressed={visualMode==="architecture"} onClick={()=>setVisualMode("architecture")}>Architecture &amp; Live Status</button><button type="button" aria-pressed={visualMode==="activity"} onClick={()=>setVisualMode("activity")}>Aktivitas Detail</button><small>Tap node untuk detail sumber/status</small></div>
-      {visualMode==="architecture" ? <ArchitectureLiveStatus hc={activity} hasnaria={hasnariaActivity} hasData={hasnariaData} oci={overview}/> :
+      {visualMode==="architecture" ? <ArchitectureLiveStatus project="hc" hc={activity} oci={overview}/> :
     <div className="hc-ops-middle">
       <article className="panel hc-ops-section">
         <div className="panel-head"><div><span className="eyebrow">WEB DEVELOPMENT</span><h2>Pengembangan & progres terbaru</h2></div><span className="hc-ops-source">{gh.commitsSource === "live" ? "GITHUB · LIVE" : gh.commitsSource === "snapshot" ? "SNAPSHOT · 18 OKT" : "Belum terhubung"}</span></div>

@@ -700,3 +700,17 @@ a.nav-item{text-decoration:none}
  .live-arch-foot>span{display:none}
  .live-arch-card{overflow:visible}
 }
+
+/* Project-isolated architecture: full-width single diagram, readable node labels. */
+.live-arch-pair{grid-template-columns:minmax(0,1fr)}
+.live-arch-card{width:100%;min-height:0}
+.live-arch-node{min-height:94px;padding:11px 13px;gap:6px}
+.live-arch-node-top strong{font-size:12px}
+.live-arch-node>small,.live-arch-node>em{font-size:11px}
+.live-arch-node-status{font-size:10px}
+.live-arch-track{gap:10px}
+.live-arch-tail{gap:10px}
+.live-arch-stack{gap:8px}
+.live-arch-arrow{font-size:21px}
+@media(max-width:760px){.live-arch-card{min-height:210px}.live-arch-track{gap:7px}.live-arch-tail{gap:7px}.live-arch-node{min-height:82px;padding:9px;gap:4px}}
+@media(max-width:620px){.live-arch-track{flex-wrap:wrap}.live-arch-tail{min-width:100%}.live-arch-stack>.live-arch-node{min-height:82px}}

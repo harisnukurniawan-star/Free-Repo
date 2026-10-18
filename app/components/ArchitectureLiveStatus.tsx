@@ -20,12 +20,7 @@ export type ArchitectureNode = {
   href: string;
 };
 
-type Props = {
-  hc: HcActivity;
-  hasnaria: HasnariaActivity;
-  hasData: HasnariaData;
-  oci?: DbOverview | null;
-};
+type Props = {project:"hc";hc:HcActivity;oci?:DbOverview|null} | {project:"hasnaria";hasnaria:HasnariaActivity;hasData:HasnariaData};
 
 function labelState(source: VisualSource, state: VisualState) {
   if (source === "snapshot") return "SNAPSHOT";
@@ -44,14 +39,12 @@ function databaseStatus(label: string, sub: string, status: Status, href: string
     detail:status.source === "snapshot" ? "Status tersimpan dari pemeriksaan lalu; bukan bukti database sehat sekarang." : status.source === "live" ? "Metadata manajemen Supabase diperiksa saat halaman dimuat; konsistensi transaksi belum diuji." : "Manajemen Supabase belum dapat dibaca.",
     href };
 }
-export function buildArchitectureNodes({hc,hasnaria,hasData,oci}:Props):{hc:ArchitectureNode[];has:ArchitectureNode[]} {
+export function buildHcArchitectureNodes({hc,oci}:{hc:HcActivity;oci?:DbOverview|null}):ArchitectureNode[] {
   const hcGitLive=hc.github.prsSource === "live";
   const hcPrs=hc.github.prs.length;
   const hcWeb=hc.website;
   const hcMonitor=hc.github.runs.find(r=>/latency watch/i.test(r.name));
   const hcBackup=hc.github.runs.find(r=>/backup monitor/i.test(r.name));
-  const hGitLive=hasData.githubSource === "live";
-  const hasPrs=hasData.openPrs.length;
   const deploy=hc.vercel.production;
   const hcNodes:ArchitectureNode[] = [
     {id:"hc-github",title:"GitHub",sub:"hcbp-hub · main",
@@ -81,6 +74,11 @@ export function buildArchitectureNodes({hc,hasnaria,hasData,oci}:Props):{hc:Arch
       detail:"Metadata OCI dan laporan backup/latency adalah sumber terpisah. "+(hcMonitor?"Latency watch: "+hcMonitor.conclusion+". ":"Latency watch belum diverifikasi. ")+(hcBackup?"Backup monitor: "+hcBackup.conclusion+".":"Backup monitor belum diverifikasi.")+" Keberhasilan workflow tidak menjamin kesehatan database saat ini.",
       href:"https://github.com/jakgunn20-maker/hcbp-hub/actions"},
   ];
+  return hcNodes;
+}
+export function buildHasnariaArchitectureNodes({hasnaria,hasData}:{hasnaria:HasnariaActivity;hasData:HasnariaData}):ArchitectureNode[] {
+  const hGitLive=hasData.githubSource === "live";
+  const hasPrs=hasData.openPrs.length;
   const hWebsite=hasnaria.website;
   const hNodes:ArchitectureNode[]=[
     {id:"has-github",title:"GitHub",sub:"Hasnaria-ice-cream · main",
@@ -106,7 +104,7 @@ export function buildArchitectureNodes({hc,hasnaria,hasData,oci}:Props):{hc:Arch
     databaseStatus("Supabase Tokyo","Production DB",hasData.production,"https://supabase.com/dashboard/project/bnnhmtkpdjlgehsvgoda"),
     databaseStatus("Supabase Singapore","Staging DB",hasData.staging,"https://supabase.com/dashboard/project/rynnpndtzjwpekbiwiif"),
   ];
-  return {hc:hcNodes,has:hNodes};
+  return hNodes;
 }
 
 function NodeBox({node,onSelect,selected}:{node:ArchitectureNode;onSelect:(node:ArchitectureNode)=>void;selected:boolean}) {
@@ -141,20 +139,24 @@ function ProjectDiagram({title,items,selected,onSelect,summary}:{title:string;it
 
 export default function ArchitectureLiveStatus(props:Props) {
   const [selected,setSelected]=useState("");
-  const nodes=buildArchitectureNodes(props);
-  const all=[...nodes.hc,...nodes.has];
-  const chosen=all.find(n=>n.id===selected);
-  const backlog=nodes.hc[0].info+" · "+nodes.has[0].info;
-  const hcFailures=props.hc.signals.filter(s=>s.category==="error").length;
-  const hasCiFailures=props.hasnaria.signals.filter(s=>s.kind==="ci").length;
-  const hcSummary="Sinyal error: "+(props.hc.github.runsSource==="live"?hcFailures:"belum terverifikasi")+
-    " · issue: "+(props.hc.github.issuesSource==="live"?props.hc.github.issuesCount:"belum terverifikasi")+" · runtime belum terhubung";
-  const hasSummary="CI gagal (72 jam): "+(props.hasnaria.actionsSource==="live"?hasCiFailures:"belum terverifikasi")+
-    " · issue: "+(props.hasnaria.issuesSource==="live"?props.hasnaria.issueCount:"belum terverifikasi")+" · runtime belum terhubung";
-  return <section className="live-arch" aria-label="Architecture and online live status report">
+  const nodes=props.project==="hc"
+    ? buildHcArchitectureNodes({hc:props.hc,oci:props.oci})
+    : buildHasnariaArchitectureNodes({hasnaria:props.hasnaria,hasData:props.hasData});
+  const chosen=nodes.find(n=>n.id===selected);
+  const isHc=props.project==="hc";
+  const hc=props.project==="hc"?props.hc:null;
+  const has=props.project==="hasnaria"?props.hasnaria:null;
+  const failures=hc?.signals.filter(s=>s.category==="error").length ?? 0;
+  const ciFailures=has?.signals.filter(s=>s.kind==="ci").length ?? 0;
+  const summary=isHc
+    ? "Sinyal error: "+(hc?.github.runsSource==="live"?failures:"belum terverifikasi")+
+      " · issue: "+(hc?.github.issuesSource==="live"?hc.github.issuesCount:"belum terverifikasi")+" · runtime belum terhubung"
+    : "CI gagal (72 jam): "+(has?.actionsSource==="live"?ciFailures:"belum terverifikasi")+
+      " · issue: "+(has?.issuesSource==="live"?has.issueCount:"belum terverifikasi")+" · runtime belum terhubung";
+  return <section className="live-arch" aria-label={isHc?"Architecture HC Connect":"Architecture Hasnaria Terrace"}>
     <div className="live-arch-pair">
-      <ProjectDiagram title="HC Connect" summary={hcSummary} items={nodes.hc} onSelect={n=>setSelected(n.id===selected?"":n.id)} selected={selected}/>
-      <ProjectDiagram title="Hasnaria Terrace" summary={hasSummary} items={nodes.has} onSelect={n=>setSelected(n.id===selected?"":n.id)} selected={selected}/>
+      <ProjectDiagram title={isHc?"HC Connect":"Hasnaria Terrace"} summary={summary} items={nodes}
+        onSelect={n=>setSelected(n.id===selected?"":n.id)} selected={selected}/>
     </div>
     <div className="live-arch-foot">
       <div className="live-arch-legend" aria-label="Legenda status">
@@ -163,7 +165,7 @@ export default function ArchitectureLiveStatus(props:Props) {
         <span><i className="live-arch-dot live-arch-bad"/>Error terpantau</span>
         <span><i className="live-arch-dot live-arch-unknown"/>Belum diverifikasi</span>
       </div>
-      <span>Backlog GitHub: {backlog} · bukan bukti bug runtime</span>
+      <span>Backlog GitHub: {nodes[0].info} · bukan bukti bug runtime</span>
     </div>
     {chosen&&<div className="live-arch-detail" role="status">
       <strong>{chosen.title} · {labelState(chosen.source,chosen.state)}</strong>
