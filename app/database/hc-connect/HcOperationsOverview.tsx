@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { HcActivity, HcSignal } from "@/lib/hc-connect-activity";
+import type { OciControllerEvidence } from "@/lib/oci-controller-activity";
 import ArchitectureLiveStatus from "@/app/components/ArchitectureLiveStatus";
 import type { DbOverview } from "@/types/database";
 
@@ -22,7 +23,7 @@ function AlertRow({ signal }: { signal: HcSignal }) {
     <a href={signal.url} target="_blank" rel="noopener noreferrer" aria-label={"Lihat detail " + signal.title}>Detail ↗</a>
   </div>;
 }
-export default function HcOperationsOverview({ activity, overview }: { activity: HcActivity; overview: DbOverview | null }) {
+export default function HcOperationsOverview({ activity, overview, controller }: { activity: HcActivity; overview: DbOverview | null; controller: OciControllerEvidence }) {
   const [visualMode,setVisualMode] = useState<"architecture"|"activity">("architecture");
   const [filter, setFilter] = useState<"all" | "error" | "issue" | "backlog">("all");
   const [page, setPage] = useState(0);
@@ -54,7 +55,7 @@ export default function HcOperationsOverview({ activity, overview }: { activity:
 
     <div className="hc-ops-visual-slot">
       <div className="live-arch-switch"><button type="button" aria-pressed={visualMode==="architecture"} onClick={()=>setVisualMode("architecture")}>Architecture &amp; Live Status</button><button type="button" aria-pressed={visualMode==="activity"} onClick={()=>setVisualMode("activity")}>Aktivitas Detail</button><small>Tap node untuk detail sumber/status</small></div>
-      {visualMode==="architecture" ? <ArchitectureLiveStatus project="hc" hc={activity} oci={overview}/> :
+      {visualMode==="architecture" ? <ArchitectureLiveStatus project="hc" hc={activity} oci={overview} controller={controller}/> :
     <div className="hc-ops-middle">
       <article className="panel hc-ops-section">
         <div className="panel-head"><div><span className="eyebrow">WEB DEVELOPMENT</span><h2>Pengembangan & progres terbaru</h2></div><span className="hc-ops-source">{gh.commitsSource === "live" ? "GITHUB · LIVE" : gh.commitsSource === "snapshot" ? "SNAPSHOT · 18 OKT" : "Belum terhubung"}</span></div>
@@ -76,6 +77,16 @@ export default function HcOperationsOverview({ activity, overview }: { activity:
             {x.run ? <a className={x.run.conclusion === "success" ? "hc-ops-good" : "hc-ops-muted"} href={x.run.url} target="_blank" rel="noopener noreferrer">{stateName(x.run.state, x.run.conclusion)} ↗</a> : <span className="hc-ops-muted">Belum terpantau</span>}
           </div>)}
           <div className="hc-ops-operating-row"><div><strong>Vercel · Production</strong><small>Metadata deployment, bukan pemeriksaan seluruh fungsi</small></div><span className={activity.vercel.source === "live" && activity.vercel.production?.state === "READY" ? "hc-ops-good" : "hc-ops-muted"}>{activity.vercel.source === "live" ? activity.vercel.production?.state || "Tidak ada produksi" : "Belum terhubung"}</span></div>
+          <div className="hc-ops-operating-row">
+            <div><strong>OCI Controller · Compute</strong>
+              <small>{controller.source === "snapshot" ? "GitHub Issue · " + dateText(controller.checkedAt) + " · metadata historis" : "GitHub Issues privat belum dapat dibaca dari server"}</small>
+            </div>
+            {controller.source === "snapshot"
+              ? <a className="hc-ops-muted" href={controller.issueUrl} target="_blank" rel="noopener noreferrer">
+                  {controller.discovery === "not_found" ? "VM tidak terlihat" : controller.discovery === "found" ? "VM ditemukan (belum terikat)" : controller.discovery === "ambiguous" ? "Nama VM ambigu" : "PARTIAL / UNVERIFIED"} ↗
+                </a>
+              : <span className="hc-ops-muted">UNVERIFIED</span>}
+          </div>
           <div className="hc-ops-operating-row"><div><strong>Runtime error produksi</strong><small>Belum ada koneksi telemetry error server/browser pada dashboard</small></div><span className="hc-ops-muted">Belum terhubung</span></div>
         </div>
       </article>
