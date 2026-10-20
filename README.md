@@ -44,28 +44,6 @@ Use a dedicated **read-only** MySQL account. The dashboard does not expose write
 
 The previous Internal Task Management scaffold is preserved in branch `backup/internal-task-foundation`.
 
-## OCI Controller Compute evidence (GitHub-only historical status)
-
-The HC Connect Overview can display sanitized Compute discovery evidence from the
-private OCI Controller repository without a VM or OCI API call from Control Room.
-
-- Configure a fine-grained GitHub token restricted to repository
-  `harisnukurniawan-star/oci-vm-retry`, with **Metadata: read** and
-  **Issues: read**. Set it server-side in Vercel as
-  `OCI_CONTROLLER_GITHUB_TOKEN` (Preview first, then Production after review).
-- Do not use OCI API signing credentials, administrative PATs, or any
-  `NEXT_PUBLIC_*` variable. The browser receives only bounded counts,
-  discovery labels, timestamp, and a source Issue link; full OCIDs never leave the server.
-- If the secret is missing, unauthorized, rate-limited, or the GitHub report
-  cannot be verified, the UI shows **UNVERIFIED**, never healthy.
-- A successful GitHub Actions run or complete inventory of accessible scopes
-  does not prove VM existence in every compartment or live application health.
-- The UI never starts/stops/retries a VM, invokes OCI Functions, writes to OCI,
-  or authorizes APPLY. A new OCI diagnosis Issue is not triggered.
-
-The GitHub-only status snapshot workflow in `oci-vm-retry` is independent of
-this viewer. The viewer reads sanitized Issue evidence, on HC Connect only;
-Hasnaria's panel stays isolated.
 ## AI ROOM video generation security
 
 The AI ROOM interface runs at `/ai-room`. Its public browser UI does **not** grant permission to spend fal.ai credits. All chargeable `POST /api/ai-room/generate` requests now require a server-configured access key; requests without a matching header are rejected **before** any provider call.

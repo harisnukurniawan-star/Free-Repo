@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import type { HcActivity } from "@/lib/hc-connect-activity";
-import type { OciControllerEvidence } from "@/lib/oci-controller-activity";
 import type { HasnariaActivity } from "@/lib/hasnaria-activity";
 import type { HasnariaData, Status } from "@/lib/hasnaria-monitoring";
 import type { DbOverview } from "@/types/database";
@@ -21,7 +20,7 @@ export type ArchitectureNode = {
   href: string;
 };
 
-type Props = {project:"hc";hc:HcActivity;oci?:DbOverview|null;controller?:OciControllerEvidence} | {project:"hasnaria";hasnaria:HasnariaActivity;hasData:HasnariaData};
+type Props = {project:"hc";hc:HcActivity;oci?:DbOverview|null} | {project:"hasnaria";hasnaria:HasnariaActivity;hasData:HasnariaData};
 
 function labelState(source: VisualSource, state: VisualState) {
   if (source === "snapshot") return "SNAPSHOT";
@@ -40,23 +39,13 @@ function databaseStatus(label: string, sub: string, status: Status, href: string
     detail:status.source === "snapshot" ? "Status tersimpan dari pemeriksaan lalu; bukan bukti database sehat sekarang." : status.source === "live" ? "Metadata manajemen Supabase diperiksa saat halaman dimuat; konsistensi transaksi belum diuji." : "Manajemen Supabase belum dapat dibaca.",
     href };
 }
-export function buildHcArchitectureNodes({hc,oci,controller}:{hc:HcActivity;oci?:DbOverview|null;controller?:OciControllerEvidence}):ArchitectureNode[] {
+export function buildHcArchitectureNodes({hc,oci}:{hc:HcActivity;oci?:DbOverview|null}):ArchitectureNode[] {
   const hcGitLive=hc.github.prsSource === "live";
   const hcPrs=hc.github.prs.length;
   const hcWeb=hc.website;
   const hcMonitor=hc.github.runs.find(r=>/latency watch/i.test(r.name));
   const hcBackup=hc.github.runs.find(r=>/backup monitor/i.test(r.name));
   const deploy=hc.vercel.production;
-  const controllerDetail=controller?.source==="snapshot"
-    ? "OCI Controller: "+(
-        controller.discovery==="not_found" ? "VM tidak terlihat di scope yang diakses" :
-        controller.discovery==="found" ? "VM bernama cocok terlihat, bukan bukti otorisasi APPLY" :
-        controller.discovery==="ambiguous" ? "WARNING: beberapa nama VM cocok" :
-        "pemeriksaan PARTIAL / UNVERIFIED"
-      )+". "+controller.scopesComplete+"/"+controller.scopesChecked+" scope diperiksa; "+
-      controller.recordsChecked+" Compute record. Bukti historis "+timeId(controller.checkedAt)+
-      "; kesehatan VM tetap UNVERIFIED, OCI APPLY "+controller.apply+"."
-    : "OCI Controller: UNVERIFIED (laporan GitHub Issues privat belum dapat dibaca oleh server).";
   const hcNodes:ArchitectureNode[] = [
     {id:"hc-github",title:"GitHub",sub:"hcbp-hub · main",
       info:hc.github.prsSource === "unavailable" ? "PR tidak tersedia" : hcPrs+" PR terbuka",
@@ -82,7 +71,7 @@ export function buildHcArchitectureNodes({hc,oci,controller}:{hc:HcActivity;oci?
       source:oci?.mode==="snapshot"?"snapshot":oci?.connected?"live":hc.github.runsSource==="snapshot"?"snapshot":"unavailable",
       state:oci?.mode==="snapshot"?"warning":oci?.connected?"ok":"unknown",
       checkedAt:oci?.checkedAt||hcMonitor?.at||hc.checkedAt,
-      detail:"Metadata OCI dan laporan backup/latency adalah sumber terpisah. "+(hcMonitor?"Latency watch: "+hcMonitor.conclusion+". ":"Latency watch belum diverifikasi. ")+(hcBackup?"Backup monitor: "+hcBackup.conclusion+".":"Backup monitor belum diverifikasi.")+" Keberhasilan workflow tidak menjamin kesehatan database saat ini. "+controllerDetail,
+      detail:"Metadata OCI dan laporan backup/latency adalah sumber terpisah. "+(hcMonitor?"Latency watch: "+hcMonitor.conclusion+". ":"Latency watch belum diverifikasi. ")+(hcBackup?"Backup monitor: "+hcBackup.conclusion+".":"Backup monitor belum diverifikasi.")+" Keberhasilan workflow tidak menjamin kesehatan database saat ini.",
       href:"https://github.com/jakgunn20-maker/hcbp-hub/actions"},
   ];
   return hcNodes;
@@ -151,21 +140,17 @@ function ProjectDiagram({title,items,selected,onSelect,summary}:{title:string;it
 export default function ArchitectureLiveStatus(props:Props) {
   const [selected,setSelected]=useState("");
   const nodes=props.project==="hc"
-    ? buildHcArchitectureNodes({hc:props.hc,oci:props.oci,controller:props.controller})
+    ? buildHcArchitectureNodes({hc:props.hc,oci:props.oci})
     : buildHasnariaArchitectureNodes({hasnaria:props.hasnaria,hasData:props.hasData});
   const chosen=nodes.find(n=>n.id===selected);
   const isHc=props.project==="hc";
   const hc=props.project==="hc"?props.hc:null;
-  const controller=props.project==="hc"?props.controller:undefined;
   const has=props.project==="hasnaria"?props.hasnaria:null;
   const failures=hc?.signals.filter(s=>s.category==="error").length ?? 0;
   const ciFailures=has?.signals.filter(s=>s.kind==="ci").length ?? 0;
   const summary=isHc
     ? "Sinyal error: "+(hc?.github.runsSource==="live"?failures:"belum terverifikasi")+
-      " · issue: "+(hc?.github.issuesSource==="live"?hc.github.issuesCount:"belum terverifikasi")+
-      " · OCI Controller: "+(controller?.source==="snapshot"
-        ? (controller.discovery==="not_found"?"VM tidak terlihat":controller.discovery==="found"?"VM cocok terlihat":"PERLU VERIFIKASI")+" · "+controller.scopesComplete+"/"+controller.scopesChecked+" scope (snapshot)"
-        : "UNVERIFIED")+" · runtime belum terhubung"
+      " · issue: "+(hc?.github.issuesSource==="live"?hc.github.issuesCount:"belum terverifikasi")+" · runtime belum terhubung"
     : "CI gagal (72 jam): "+(has?.actionsSource==="live"?ciFailures:"belum terverifikasi")+
       " · issue: "+(has?.issuesSource==="live"?has.issueCount:"belum terverifikasi")+" · runtime belum terhubung";
   return <section className="live-arch" aria-label={isHc?"Architecture HC Connect":"Architecture Hasnaria Terrace"}>
