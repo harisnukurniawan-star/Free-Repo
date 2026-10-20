@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildHcArchitectureNodes, buildHasnariaArchitectureNodes } from "../app/components/ArchitectureLiveStatus";
 import type { HcActivity } from "../lib/hc-connect-activity";
+import type { OciControllerEvidence } from "../lib/oci-controller-activity";
 import type { HasnariaActivity } from "../lib/hasnaria-activity";
 import type { HasnariaData } from "../lib/hasnaria-monitoring";
 
@@ -41,4 +42,22 @@ test("each project's diagram contains only its own components",()=>{
   const hasNodes=buildHasnariaArchitectureNodes({hasnaria,hasData});
   assert.deepEqual(hcNodes.map(n=>n.id),["hc-github","hc-vercel","hc-website","hc-oci"]);
   assert.deepEqual(hasNodes.map(n=>n.id),["has-github","has-vercel","has-web","Supabase Tokyo","Supabase Singapore"]);
+});
+
+test("HC architecture shows controller evidence as historical metadata without mixing projects",()=>{
+  const controller:OciControllerEvidence={
+    source:"snapshot",checkedAt:"2026-10-20T01:16:02Z",fetchedAt:"2026-10-20T04:00:00Z",
+    issueUrl:"https://github.com/harisnukurniawan-star/oci-vm-retry/issues/31",
+    discovery:"not_found",coverage:"complete_accessible",scopesChecked:2,scopesComplete:2,
+    recordsChecked:0,apply:"disabled",
+  };
+  const hcNodes=buildHcArchitectureNodes({hc,controller});
+  assert.deepEqual(hcNodes.map(n=>n.id),["hc-github","hc-vercel","hc-website","hc-oci"]);
+  const ociNode=hcNodes.find(n=>n.id==="hc-oci");
+  assert.ok(ociNode?.detail.includes("2/2 scope diperiksa"));
+  assert.ok(ociNode?.detail.includes("VM tidak terlihat"));
+  assert.ok(ociNode?.detail.includes("kesehatan VM tetap UNVERIFIED"));
+  assert.notEqual(ociNode?.state,"ok");
+  const hasNodes=buildHasnariaArchitectureNodes({hasnaria,hasData});
+  assert.ok(!hasNodes.some(n=>n.detail.includes("OCI Controller")));
 });

@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import DatabaseSidebar from "@/app/components/DatabaseSidebar";
 import HcOperationsOverview from "@/app/database/hc-connect/HcOperationsOverview";
 import type { HcActivity } from "@/lib/hc-connect-activity";
+import type { OciControllerEvidence } from "@/lib/oci-controller-activity";
 import { useRouter } from "next/navigation";
 import type { DbHealth, DbOverview, DbSchema, DbTable } from "@/types/database";
 
@@ -93,7 +94,7 @@ function buildPositions(tables: DbTable[]) {
   );
 }
 
-export default function DatabaseDashboard({ activity }: { activity: HcActivity }) {
+export default function DatabaseDashboard({ activity, controller }: { activity: HcActivity; controller: OciControllerEvidence }) {
   const router = useRouter();
   const [overview, setOverview] = useState<DbOverview | null>(null);
   const [schema, setSchema] = useState<DbSchema>({ tables: [], relations: [] });
@@ -337,7 +338,7 @@ export default function DatabaseDashboard({ activity }: { activity: HcActivity }
         </section>}
 
         <div className="terrace-content hc-content">
-          {hcTab === "overview" && <HcOperationsOverview activity={activity} overview={overview} />}
+          {hcTab === "overview" && <HcOperationsOverview activity={activity} overview={overview} controller={controller} />}
           {hcTab === "schema" && <div className="hc-schema-view">{renderSchemaPanel(true)}</div>}
 
           {hcTab === "storage" && (
