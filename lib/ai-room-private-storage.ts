@@ -286,17 +286,29 @@ export async function privateList(owner:string):Promise<ClientJob[]>{
     if(error instanceof VideoEngineError)throw error;
     throw new VideoEngineError("Unable to list private videos.",503,true);
   }finally{c.destroy();}
-  const jobs=await Promise.all(objects.map(async row=>{
-    const id=row.Key?.slice(("jobs/"+owner+"/").length).replace(/\.json$/,"");
-    if(!id || !JOB_ID.test(id))return null;
-    try{
-      const record=await getRecord(owner,id);
-      return record.status==="deleted" || await wasDeleted(owner,id)?null:await signedRecord(record);
-    }catch(error){
-      if(error instanceof VideoEngineError && error.httpStatus===404)return null;
-      throw error;
+  // Bound OCI round-trips per Gallery load: a large history must not fan out
+  // to 50 simultaneous Native SDK connections. Preserve newest-first ordering.
+  const jobs:(ClientJob|null)[]=Array(objects.length).fill(null);
+  let cursor=0;
+  async function loadWorker():Promise<void>{
+    while(cursor<objects.length){
+      const index=cursor++;
+      const row=objects[index];
+      const id=row.Key?.slice(("jobs/"+owner+"/").length).replace(/\.json$/,"");
+      if(!id || !JOB_ID.test(id))continue;
+      try{
+        const record=await getRecord(owner,id);
+        if(record.status==="deleted")continue;
+        // signedRecord already enforces the deletion tombstone. Checking it
+        // here too doubled the OCI HEAD requests for every listed job.
+        jobs[index]=await signedRecord(record);
+      }catch(error){
+        if(error instanceof VideoEngineError && error.httpStatus===404)continue;
+        throw error;
+      }
     }
-  }));
+  }
+  await Promise.all(Array.from({length:Math.min(8,objects.length)},()=>loadWorker()));
   return jobs.filter((job):job is ClientJob=>job!==null);
 }
 export async function privateDelete(owner:string,id:string):Promise<void>{
