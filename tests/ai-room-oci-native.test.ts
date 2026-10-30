@@ -149,6 +149,8 @@ test("Gallery API lists only the signed-in owner's records and never borrows ano
   assert.deepEqual((await bobby.json()).jobs,[]);
   assert.ok(calls.includes("list:jobs/alice/"));
   assert.ok(calls.includes("list:jobs/bobby/"));
+  // One tombstone HEAD per listed video, not two OCI round trips.
+  assert.equal(calls.filter(x=>x==="head:deleted/alice/"+id+".json").length,1);
   assert.equal(calls.some(x=>x==="get:jobs/bobby/"+id+".json"),false);
 });
 
