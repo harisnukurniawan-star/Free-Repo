@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {ASPECTS, aspectValue, referenceFrameLayout, matchesAspect} from "../lib/ai-room-framing";
+import {ASPECTS, aspectValue, referenceFrameLayout, referenceNeedsNormalization, matchesAspect} from "../lib/ai-room-framing";
 
 test("all three ratio buttons map to correct native dimensions",()=>{
   assert.equal(ASPECTS["16:9"],16/9);
@@ -61,4 +61,14 @@ test("normalizing oversized photos preserves contained geometry without cropping
     assert.ok(frame.x+frame.fittedWidth<=frame.width+0.01);
     assert.ok(frame.y+frame.fittedHeight<=frame.height+0.01);
   }
+});
+
+test("large inline reference is optimized even if ratio and dimensions already match",()=>{
+  const matching=referenceFrameLayout(1280,720,"16:9");
+  assert.equal(matching.needsFraming,false);
+  assert.equal(matching.needsResize,false);
+  assert.equal(referenceNeedsNormalization(matching,800_000),false);
+  assert.equal(referenceNeedsNormalization(matching,900_001),true);
+  assert.equal(referenceNeedsNormalization(referenceFrameLayout(720,1280,"16:9"),40_000),true);
+  assert.equal(referenceNeedsNormalization(referenceFrameLayout(4320,7680,"9:16"),40_000),true);
 });

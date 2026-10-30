@@ -131,6 +131,9 @@ function parseJobId(id: string) {
   return { endpoint: ENDPOINTS[tier as Tier][mode], requestId };
 }
 
+const PROVIDER_SAFETY_REJECTION =
+  "The provider blocked this request or reference image under its content safety policy.";
+
 /** Report a safe failure category without revealing raw provider responses. */
 function providerFailureReason(result: unknown): string {
   // Inspect only known provider error fields and never echo their raw contents.
@@ -153,7 +156,7 @@ function providerFailureReason(result: unknown): string {
   const hint = hints.join(" ").toLowerCase();
 
   if (/(?:moderation|content[_ -]?policy|safety[_ -]?check|nsfw|prohibited[_ -]?content|explicit[_ -]?content)/.test(hint)) {
-    return "The provider blocked this request or reference image under its content safety policy.";
+    return PROVIDER_SAFETY_REJECTION;
   }
   if (/(?:image|reference|base64|data[_ -]?uri|mime|file[_ -]?type|file[_ -]?format)/.test(hint) &&
       /(?:invalid|unsupported|malformed|unreadable|too large|decode|failed to load|missing|required|not found)/.test(hint)) {
@@ -172,6 +175,13 @@ function providerFailureReason(result: unknown): string {
 }
 
 function providerHttpError(status: number, detail?: unknown): VideoEngineError {
+  // Some endpoints use HTTP 403 for content policy rather than API key failure.
+  // Classify only recognized safety reasons; all unknown 403 responses remain
+  // authentication/configuration failures instead of exposing provider text.
+  if (status === 403 && detail !== undefined &&
+      providerFailureReason(detail) === PROVIDER_SAFETY_REJECTION) {
+    return new VideoEngineError(PROVIDER_SAFETY_REJECTION, 422, false);
+  }
   if (status === 401 || status === 403) {
     return new VideoEngineError("Video provider authentication failed. Check the server configuration.", 503, false);
   }
@@ -242,7 +252,7 @@ class FalWanEngine implements VideoEngine {
           const response = await fetch(url, { ...init, signal, cache: "no-store" });
           if (!response.ok) {
             let details: unknown;
-            if ((response.status === 400 || response.status === 422) &&
+            if ((response.status === 400 || response.status === 403 || response.status === 422) &&
                 response.headers.get("content-type")?.includes("application/json")) {
               try {
                 const raw = await response.clone().text();
