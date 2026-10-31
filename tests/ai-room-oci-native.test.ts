@@ -275,6 +275,14 @@ test("native video HTTP routes verify cookie owner, byte ranges and private down
   assert.match(range.headers.get("cache-control")||"",/no-store/);
   assert.equal(await range.text(),"2345");
 
+  const partialDownload=await download(makeRequest("alice","bytes=2-5"),context);
+  assert.equal(partialDownload.status,206);
+  assert.equal(partialDownload.headers.get("content-range"),"bytes 2-5/10");
+  assert.equal(partialDownload.headers.get("content-length"),"4");
+  assert.match(partialDownload.headers.get("accept-ranges")||"",/bytes/);
+  assert.match(partialDownload.headers.get("content-disposition")||"",/attachment/);
+  assert.equal(await partialDownload.text(),"2345");
+
   const full=await download(makeRequest("alice"),context);
   assert.equal(full.status,200);
   assert.equal(full.headers.get("content-type"),"video/mp4");
@@ -284,7 +292,8 @@ test("native video HTTP routes verify cookie owner, byte ranges and private down
   assert.match(full.headers.get("content-disposition")||"",/attachment/);
   assert.equal(await full.text(),"0123456789");
   assert.deepEqual(calls.filter(x=>x.startsWith("video:")),[
-    "video:videos/alice/"+id+".mp4","video:videos/alice/"+id+".mp4"
+    "video:videos/alice/"+id+".mp4","video:videos/alice/"+id+".mp4",
+    "video:videos/alice/"+id+".mp4"
   ]);
 });
 

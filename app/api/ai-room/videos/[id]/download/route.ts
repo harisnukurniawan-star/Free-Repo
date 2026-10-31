@@ -14,13 +14,19 @@ export async function GET(request:Request,{params}:{params:Promise<{id:string}>}
     const owner=requirePrivateUser(request);
     const {id}=await params;
     if(nativeStorageEnabled()){
-      const video=await privateReadNative(owner,id,null);
-      return new Response(Readable.toWeb(video.stream) as ReadableStream,{headers:{
+      const video=await privateReadNative(owner,id,request.headers.get("range"));
+      const headers=new Headers({
         "Content-Type":"video/mp4","Content-Length":String(video.length),
+        "Accept-Ranges":"bytes",
         "Content-Disposition":'attachment; filename="ai-room-video.mp4"',
         "Cache-Control":"private, no-store","Referrer-Policy":"no-referrer",
         "X-Content-Type-Options":"nosniff"
-      }});
+      });
+      if(video.partial)headers.set("Content-Range",
+        "bytes "+video.start+"-"+video.end+"/"+video.total);
+      return new Response(Readable.toWeb(video.stream) as ReadableStream,{
+        status:video.partial?206:200,headers
+      });
     }
     const job=await privateStatus(owner,id);
     if(job.status!=="completed" || !job.downloadUrl)throw new VideoEngineError("Video is not yet ready.",409,true);
