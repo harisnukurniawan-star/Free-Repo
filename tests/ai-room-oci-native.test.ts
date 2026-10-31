@@ -5,7 +5,7 @@ import {scryptSync} from "node:crypto";
 import {makeSession,SESSION_COOKIE} from "../lib/ai-room-private-auth";
 import {
   NativeObjectStore,nativeCredentialsConfigured,nativeObjectName,normalizeOciId,privateVideoPath,
-  classifyNativeFailure,nativeError,retryTransientOciList
+  classifyNativeFailure,nativeError,retryTransientOciList,normalizeNativeListResponse
 } from "../lib/ai-room-native-objects";
 import {privateDelete,privateReadNative} from "../lib/ai-room-private-storage";
 import {VideoEngineError} from "../lib/video-engine";
@@ -287,6 +287,43 @@ test("OCI signing IDs normalize hidden CRLF and control characters without chang
   assert.equal(nativeCredentialsConfigured(),false);
 });
 
+
+test("native OCI Gallery inventory decodes Date and ISO timestamps without losing videos",()=>{
+  const result=normalizeNativeListResponse({listObjects:{objects:[
+    {name:"jobs/alice/first.json",timeModified:"2026-10-31T08:00:00.000Z"},
+    {name:"jobs/alice/second.json",timeModified:new Date("2026-10-31T07:00:00.000Z")},
+    {name:"jobs/alice/third.json"}
+  ],nextStartWith:"cursor"}});
+  assert.equal(result.Contents.length,3);
+  assert.equal(result.Contents[0].LastModified?.toISOString(),"2026-10-31T08:00:00.000Z");
+  assert.equal(result.Contents[1].LastModified?.toISOString(),"2026-10-31T07:00:00.000Z");
+  assert.equal(result.Contents[2].LastModified,undefined);
+  assert.equal(result.IsTruncated,true);
+  assert.deepEqual(normalizeNativeListResponse({listObjects:{objects:[]}}),{
+    Contents:[],KeyCount:0,IsTruncated:false
+  });
+});
+test("malformed OCI inventory fails closed instead of reporting empty Gallery",()=>{
+  for(const value of [{}, {listObjects:{}}, {listObjects:{objects:[null]}},
+    {listObjects:{objects:[{name:123}]}}]){
+    assert.throws(()=>normalizeNativeListResponse(value),TypeError);
+  }
+});
+test("native list operator diagnostics expose fixed failure stage only",()=>{
+  const previous=console.warn;
+  const lines:string[]=[];
+  console.warn=(...parts:unknown[])=>{lines.push(parts.map(String).join(" "));};
+  try{
+    assert.throws(()=>nativeError(Object.assign(new TypeError("SECRET jobs/alice"),{
+      privateKey:"DO-NOT-LEAK"
+    }),"list","decode"),VideoEngineError);
+    const entry=lines[0]||"";
+    assert.match(entry,/"phase":"decode"/);
+    assert.match(entry,/"errorFamily":"TypeError"/);
+    assert.doesNotMatch(entry,/SECRET|DO-NOT-LEAK/);
+    assert.equal(entry.includes("jobs/alice"),false);
+  }finally{console.warn=previous;}
+});
 
 test("OCI native failure categories distinguish authorization, transport and unknown causes",()=>{
   assert.deepEqual(classifyNativeFailure({statusCode:403,message:"PRIVATE-SECRET-NEVER-LOG"}),{

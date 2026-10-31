@@ -88,7 +88,7 @@ export function classifyNativeFailure(error:unknown):{status:number|null;categor
     return {status,category:"network_or_signing"};
   return {status,category:"unclassified"};
 }
-export function nativeError(error:unknown,operation:"head"|"get"|"put"|"list"|"delete"|"stream"="get"):never {
+export function nativeError(error:unknown,operation:"head"|"get"|"put"|"list"|"delete"|"stream"="get",phase:"request"|"decode"|"dispose"|"inventory"="inventory"):never {
   const failure=classifyNativeFailure(error);
   // An absent individual object is normal; a 404 when listing means the
   // bucket, namespace or route is wrong and must never look like an empty gallery.
@@ -97,7 +97,13 @@ export function nativeError(error:unknown,operation:"head"|"get"|"put"|"list"|"d
   }
   // Only fixed labels and numeric HTTP statuses. Never log the SDK error object:
   // it may contain headers, the requested private object key, or signed URLs.
-  console.warn("AI_ROOM_OCI_NATIVE_FAILURE",JSON.stringify({operation,...failure}));
+  // Only allowlisted exception families and fixed phases enter operator logs.
+  // Never log raw messages, keys, stack traces or SDK response objects.
+  const rawFamily=(error && typeof error==="object" && "name" in error)?String((error as {name?:unknown}).name):"";
+  const safeFamily=["TypeError","SyntaxError","RangeError","AbortError","ServiceError","ResponseError","Error"].includes(rawFamily)?rawFamily:"other";
+  console.warn("AI_ROOM_OCI_NATIVE_FAILURE",JSON.stringify({
+    operation,...failure,...(operation==="list"?{phase,errorFamily:safeFamily}:{})
+  }));
   if(operation==="list"){
     // Gallery has an authenticated owner session. Return only fixed, safe
     // failure categories so a production operator can distinguish OCI IAM
@@ -126,6 +132,31 @@ export async function retryTransientOciList<T>(operation:()=>Promise<T>, wait:()
 }
 export type NativeListItem={Key?:string;LastModified?:Date};
 export type NativeList={Contents:NativeListItem[];KeyCount:number;IsTruncated:boolean};
+
+/** Decode an OCI SDK list response defensively: dates can arrive as Date or
+ * ISO text in some adapters. A malformed result must never become an empty
+ * Gallery (which could conceal existing videos). */
+export function normalizeNativeListResponse(raw:unknown):NativeList {
+  const payload=(raw && typeof raw==="object" && "listObjects" in raw)
+    ?(raw as {listObjects?:unknown}).listObjects:undefined;
+  if(!payload || typeof payload!=="object" || !("objects" in payload) ||
+     !Array.isArray(payload.objects)){
+    throw new TypeError("Invalid OCI inventory response");
+  }
+  const list=payload as {objects:unknown[];nextStartWith?:unknown};
+  const contents:NativeListItem[]=list.objects.map(row=>{
+    if(!row || typeof row!=="object" || typeof (row as {name?:unknown}).name!=="string"){
+      throw new TypeError("Invalid OCI inventory item");
+    }
+    const item=row as {name:string;timeModified?:unknown};
+    const time=item.timeModified;
+    const date=time instanceof Date ? time :
+      typeof time==="string" || typeof time==="number" ? new Date(time) : undefined;
+    return {Key:item.name,LastModified:date && Number.isFinite(date.getTime()) ? date : undefined};
+  });
+  return {Contents:contents,KeyCount:contents.length,
+    IsTruncated:typeof list.nextStartWith==="string" && list.nextStartWith.length>0};
+}
 export class NativeObjectStore {
   async head(key:string):Promise<{ContentLength:number}> {
     const c=client();
@@ -161,17 +192,22 @@ export class NativeObjectStore {
     }catch(e){if(e instanceof VideoEngineError)throw e;return nativeError(e,"get");}finally{c.close();}
   }
   async list(prefix:string,limit:number):Promise<NativeList>{
+    let phase:"request"|"decode"|"dispose"="request";
     try{
       return await retryTransientOciList(async()=>{
+        phase="request";
         const c=client();
         try{
           const r=await withPrivateOciLogs(()=>c.listObjects({...config(),prefix,limit,fields:"name,timeModified"}));
-          const contents=(r.listObjects.objects||[]).map(o=>({Key:o.name,LastModified:o.timeModified}));
-          return {Contents:contents,KeyCount:contents.length,IsTruncated:Boolean(r.listObjects.nextStartWith)};
-        }finally{c.close();}
+          phase="decode";
+          return normalizeNativeListResponse(r);
+        }finally{
+          phase="dispose";
+          c.close();
+        }
       });
     }catch(e){
-      return nativeError(e,"list");
+      return nativeError(e,"list",phase);
     }
   }
   async delete(key:string):Promise<void>{
