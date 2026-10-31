@@ -18,7 +18,7 @@ export async function verifyPrivateVideoBytes(
       signal:AbortSignal.timeout(20_000)
     });
     if(response.status!==206){
-      await response.body?.cancel().catch(()=>{});
+      void response.body?.cancel().catch(()=>{});
       throw new Error("OCI "+path+" check returned HTTP "+response.status+
         ". No video was modified.");
     }
@@ -31,7 +31,7 @@ export async function verifyPrivateVideoBytes(
       response.headers.get("content-length")!==String(length)||
       !(response.headers.get("content-type")||"").startsWith("video/mp4")||
       !(response.headers.get("cache-control")||"").includes("no-store")){
-      await response.body?.cancel().catch(()=>{});
+      void response.body?.cancel().catch(()=>{});
       throw new Error("OCI "+path+" returned an invalid partial MP4 response.");
     }
     const bytes=new Uint8Array(await response.arrayBuffer());
@@ -66,7 +66,7 @@ export async function verifyPrivateVideoBytes(
     const denied=response.status===401 &&
       (response.headers.get("content-type")||"").includes("application/json") &&
       (response.headers.get("cache-control")||"").includes("no-store");
-    await response.body?.cancel().catch(()=>{});
+    void response.body?.cancel().catch(()=>{});
     if(!denied)throw new Error("Unauthenticated "+path+
       " was not safely denied (HTTP "+response.status+"). Contact the operator.");
   }
