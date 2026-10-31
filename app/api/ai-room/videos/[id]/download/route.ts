@@ -5,6 +5,9 @@ import {privateVideoEnabled, requirePrivateUser} from "@/lib/ai-room-private-aut
 import {privateStatus,privateReadNative} from "@/lib/ai-room-private-storage";
 import {VideoEngineError,videoEngineError} from "@/lib/video-engine";
 export const runtime="nodejs";
+export const dynamic="force-dynamic";
+// Large private MP4 downloads need the same streaming window as Play.
+export const maxDuration=300;
 export async function GET(request:Request,{params}:{params:Promise<{id:string}>}){
   try{
     if(!privateVideoEnabled())throw new VideoEngineError("Private video mode is disabled.",404,false);
