@@ -258,6 +258,16 @@ test("native video HTTP routes verify cookie owner, byte ranges and private down
   assert.equal(other.status,404);
   assert.equal(calls.filter(x=>x.startsWith("video:")).length,0);
 
+  // Download must reject anonymous and other-owner requests before opening
+  // any private MP4 bytes.
+  const anonymousDownload=await download(makeRequest(null),context);
+  assert.equal(anonymousDownload.status,401);
+  const crossOwnerDownload=await download(makeRequest("bobby"),context);
+  assert.equal(crossOwnerDownload.status,404);
+  assert.equal(calls.filter(x=>x.startsWith("video:")).length,0);
+  assert.match(anonymousDownload.headers.get("cache-control")||"",/no-store/);
+  assert.match(crossOwnerDownload.headers.get("cache-control")||"",/no-store/);
+
   const range=await stream(makeRequest("alice","bytes=2-5"),context);
   assert.equal(range.status,206);
   assert.equal(range.headers.get("content-range"),"bytes 2-5/10");
@@ -267,6 +277,10 @@ test("native video HTTP routes verify cookie owner, byte ranges and private down
 
   const full=await download(makeRequest("alice"),context);
   assert.equal(full.status,200);
+  assert.equal(full.headers.get("content-type"),"video/mp4");
+  assert.equal(full.headers.get("content-length"),"10");
+  assert.match(full.headers.get("cache-control")||"",/no-store/);
+  assert.equal(full.headers.get("x-content-type-options"),"nosniff");
   assert.match(full.headers.get("content-disposition")||"",/attachment/);
   assert.equal(await full.text(),"0123456789");
   assert.deepEqual(calls.filter(x=>x.startsWith("video:")),[
