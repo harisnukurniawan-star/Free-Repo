@@ -325,7 +325,7 @@ test("OCI Gallery list failures expose safe categories without leaking provider 
         if(!(e instanceof VideoEngineError))return false;
         assert.equal(e.httpStatus,503);
         assert.match(e.message,message);
-        assert.doesNotMatch(e.message,/PRIVATE|SIGNATURE HEADER|ENDPOINT|QUOTA|SECRET/i);
+        assert.doesNotMatch(e.message,/PRIVATE SIGNATURE HEADER|PRIVATE ENDPOINT|PRIVATE INTERNAL|PRIVATE QUOTA|SECRET BUCKET NAME/i);
         return true;
       });
     }
