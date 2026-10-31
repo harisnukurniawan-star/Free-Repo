@@ -309,6 +309,29 @@ test("OCI native failure categories distinguish authorization, transport and unk
   });
 });
 
+test("OCI Gallery list failures expose safe categories without leaking provider details",()=>{
+  const previous=console.warn;
+  console.warn=()=>{};
+  try{
+    const cases=[
+      [{statusCode:403,message:"PRIVATE SIGNATURE HEADER"},/authorization|access was rejected/i],
+      [{statusCode:404,message:"SECRET BUCKET NAME"},/bucket or namespace/i],
+      [{code:"ENOTFOUND",message:"PRIVATE ENDPOINT"},/connection or request signing/i],
+      [{statusCode:503,message:"PRIVATE INTERNAL"},/storage service|service could not/i],
+      [{statusCode:429,message:"PRIVATE QUOTA"},/rate-limited/i]
+    ] as const;
+    for(const [failure,message] of cases){
+      assert.throws(()=>nativeError(failure,"list"),(e:unknown)=>{
+        if(!(e instanceof VideoEngineError))return false;
+        assert.equal(e.httpStatus,503);
+        assert.match(e.message,message);
+        assert.doesNotMatch(e.message,/PRIVATE SIGNATURE HEADER|PRIVATE ENDPOINT|PRIVATE INTERNAL|PRIVATE QUOTA|SECRET BUCKET NAME/i);
+        return true;
+      });
+    }
+  }finally{console.warn=previous;}
+});
+
 test("OCI native operator logs contain no raw SDK error message or private object key",()=>{
   const old=console.warn;
   const lines:string[]=[];

@@ -6,7 +6,7 @@ import {getSignedUrl} from "@aws-sdk/s3-request-presigner";
 import {getVideoEngine, parseVideoRequest, VideoEngineError, type VideoJob} from "./video-engine";
 import {privateVideoConfigured} from "./ai-room-private-auth";
 import {matureAccountEligible} from "./ai-room-content-policy";
-import {nativeStorageEnabled,privateVideoPath,NativeObjectStore} from "./ai-room-native-objects";
+import {nativeStorageEnabled,privateVideoPath,NativeObjectStore,nativeError} from "./ai-room-native-objects";
 import {NativeCommandBridge} from "./ai-room-native-bridge";
 
 const REGION="ap-batam-1";
@@ -284,6 +284,9 @@ export async function privateList(owner:string):Promise<ClientJob[]>{
     objects=(result.Contents||[]).sort((a,b)=>(b.LastModified?.getTime()||0)-(a.LastModified?.getTime()||0)).slice(0,50);
   }catch(error){
     if(error instanceof VideoEngineError)throw error;
+    // Preserve safe failure classification if an underlying Native bridge
+    // unexpectedly throws a raw SDK error instead of VideoEngineError.
+    if(nativeStorageEnabled())return nativeError(error,"list");
     throw new VideoEngineError("Unable to list private videos.",503,true);
   }finally{c.destroy();}
   // Bound OCI round-trips per Gallery load: a large history must not fan out

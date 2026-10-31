@@ -98,6 +98,20 @@ export function nativeError(error:unknown,operation:"head"|"get"|"put"|"list"|"d
   // Only fixed labels and numeric HTTP statuses. Never log the SDK error object:
   // it may contain headers, the requested private object key, or signed URLs.
   console.warn("AI_ROOM_OCI_NATIVE_FAILURE",JSON.stringify({operation,...failure}));
+  if(operation==="list"){
+    // Gallery has an authenticated owner session. Return only fixed, safe
+    // failure categories so a production operator can distinguish OCI IAM
+    // denial from a missing bucket or transient service outage.
+    const messages:Record<NativeFailureCategory,string>={
+      not_found:"OCI Gallery could not locate its configured storage bucket or namespace (404).",
+      auth_or_policy:"OCI Gallery access was rejected by OCI (401/403). Check the production signing identity and bucket permissions.",
+      rate_limited:"OCI Gallery was rate-limited (429). Retry loading later; do not generate again.",
+      oci_service:"OCI Object Storage service could not complete the Gallery read (5xx).",
+      network_or_signing:"OCI Gallery connection or request signing failed. Check private OCI connectivity and signing configuration.",
+      unclassified:"OCI Gallery encountered an unclassified storage error. Check operator diagnostics; do not generate again."
+    };
+    throw new VideoEngineError(messages[failure.category],503,false);
+  }
   throw new VideoEngineError("Private OCI Object Storage operation failed.",503,true);
 }
 /** One bounded retry is safe only for read-only inventory requests, never paid submission or writes. */
