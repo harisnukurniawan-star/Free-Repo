@@ -44,12 +44,17 @@ export function reconcilePrivateJobs<T extends PrivateVideoSurfaceJob>(
 ): T[] {
   const merged=new Map(remote.filter(row=>!locallyDeletedIds.has(row.id)).map(row=>[row.id,row]));
   for(const row of current){
-    if(!acceptedIds.has(row.id) || locallyDeletedIds.has(row.id))continue;
+    if(locallyDeletedIds.has(row.id))continue;
     const fromStorage=merged.get(row.id);
-    if(!fromStorage || (
+    // A just-checked terminal status is newer than a list response that
+    // started earlier. Protect historic jobs too, not only this tab's submits.
+    if(fromStorage &&
       (row.status==="completed" || row.status==="failed") &&
-      (fromStorage.status==="queued" || fromStorage.status==="processing")
-    )) merged.set(row.id,row);
+      (fromStorage.status==="queued" || fromStorage.status==="processing")){
+      merged.set(row.id,row);
+    }else if(!fromStorage && acceptedIds.has(row.id)){
+      merged.set(row.id,row);
+    }
   }
   return [...merged.values()].sort((a,b)=>
     createdAtMs(b.createdAt)-createdAtMs(a.createdAt) || b.id.localeCompare(a.id));

@@ -85,3 +85,22 @@ test("Gallery remains authoritative for jobs not accepted in this browser sessio
   assert.equal(merged[0].status,"completed");
   assert.equal(merged[0].videoUrl,saved.videoUrl);
 });
+
+test("a stale Gallery response cannot downgrade a recovered historic job",()=>{
+  const terminal=job("historic-video","completed",now,
+    "/api/ai-room/videos/historic-video/stream");
+  const stale=job("historic-video","processing",now);
+  const merged=reconcilePrivateJobs([stale],[terminal],
+    new Set<string>(),new Set<string>());
+  assert.equal(merged[0].status,"completed");
+  assert.equal(merged[0].videoUrl,terminal.videoUrl);
+  assert.equal(privateVideoSurfaces(merged).gallery.length,1);
+});
+
+test("a deleted or absent historic job is never resurrected by recovery",()=>{
+  const old=job("deleted-historic","completed",now,
+    "/api/ai-room/videos/deleted-historic/stream");
+  assert.deepEqual(reconcilePrivateJobs([],[old],new Set(),new Set()),[]);
+  assert.deepEqual(reconcilePrivateJobs([job("deleted-historic","queued",now)],
+    [old],new Set(),new Set(["deleted-historic"])),[]);
+});

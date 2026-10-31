@@ -5,6 +5,7 @@ import {WAN_CATALOG,WAN_MODEL_NAMES,isWanModel,type WanModel,type WanDuration,ty
 import {estimateWanCostUsd} from "@/lib/ai-room-jobs";
 import {aspectValue,frameReferenceImage,type AiRoomAspect} from "@/lib/ai-room-framing";
 import {privateVideoSurfaces,reconcilePrivateJobs} from "@/lib/ai-room-private-views";
+import PrivateVideoPlayer from "./PrivateVideoPlayer";
 
 type PrivateJob={
   id:string;prompt:string;model:string;mode:string;duration:string;aspect:string;quality:string;
@@ -118,34 +119,60 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
     const refresh=window.setInterval(()=>{void loadJobs(user).catch(()=>{});},4*60*1000);
     return()=>{window.clearTimeout(initial);window.clearInterval(refresh);};
   },[user,loadJobs]);
+  // This endpoint only checks an already accepted job. Never replay a paid POST.
+  // The GET can import a completed provider video to OCI, so allow enough time
+  // for large MP4 transfers and never overlap status requests in this tab.
+  const refreshPendingStatus=useCallback(async(targets:readonly PrivateJob[],owner:string)=>{
+    if(pollingActive.current || activeUserRef.current!==owner)return;
+    const epoch=sessionEpoch.current;
+    let terminalUpdated=false;
+    pollingActive.current=true;
+    try{
+      for(const job of targets){
+        if(epoch!==sessionEpoch.current || activeUserRef.current!==owner)break;
+        try{
+          const result=await asJson(await fetch(
+            "/api/ai-room/generate/"+encodeURIComponent(job.id),{
+              cache:"no-store",signal:AbortSignal.timeout(90_000)
+            }
+          ));
+          if(epoch!==sessionEpoch.current || activeUserRef.current!==owner)break;
+          const update=result.job as PrivateJob|undefined;
+          if(!update || update.id!==job.id ||
+            !["queued","processing","completed","failed"].includes(update.status)){
+            throw new Error("Job status response is incomplete. Do not submit another generation.");
+          }
+          setJobs(current=>current.map(row=>row.id===job.id?update:row));
+          if(update.status==="completed" || update.status==="failed"){
+            terminalUpdated=true;
+            if(update.status==="failed")setError(
+              (update.error||"The provider could not complete this request.")+
+              " No video was added to Recent, Gallery, or Preview."
+            );
+          }
+        }catch(e){
+          if(epoch===sessionEpoch.current && activeUserRef.current===owner){
+            setError(e instanceof Error
+              ?e.message+" The existing job was not resubmitted."
+              :"Status is temporarily unavailable; no paid generation was resubmitted.");
+          }
+        }
+      }
+      // Pull the newly stored OCI record and playable link after a terminal job.
+      if(terminalUpdated && epoch===sessionEpoch.current && activeUserRef.current===owner){
+        await loadJobs(owner).catch(()=>{});
+      }
+    }finally{pollingActive.current=false;}
+  },[loadJobs]);
   useEffect(()=>{
     if(!user || !jobs.some(j=>j.status==="queued" || j.status==="processing"))return;
     const timer=window.setInterval(()=>{
-      if(pollingActive.current)return;
-      const epoch=sessionEpoch.current;
-      pollingActive.current=true;
-      const pending=jobs.filter(j=>j.status==="queued"||j.status==="processing");
-      void (async()=>{
-        try {for(const job of pending){
-          if(epoch!==sessionEpoch.current)break;
-          try{
-            const result=await asJson(await fetch("/api/ai-room/generate/"+encodeURIComponent(job.id),{cache:"no-store"}));
-            if(epoch!==sessionEpoch.current)break;
-            const update=result.job as PrivateJob;
-            setJobs(current=>current.map(row=>row.id===job.id?update:row));
-            if(update.status==="failed"){
-              setError((update.error||"The provider could not complete this request.")+
-                " No video was added to Recent, Gallery, or Preview.");
-            }
-          }catch(e){
-            if(epoch===sessionEpoch.current)
-              setError(e instanceof Error?e.message:"Status temporarily unavailable; job was not resubmitted");
-          }
-        }}finally{pollingActive.current=false;}
-      })();
-    },7000);
+      void refreshPendingStatus(
+        jobs.filter(j=>j.status==="queued" || j.status==="processing"),user
+      );
+    },20_000);
     return()=>window.clearInterval(timer);
-  },[jobs,user]);
+  },[jobs,user,refreshPendingStatus]);
 
   async function login(){
     setBusy(true);setError("");
@@ -276,8 +303,8 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
         </section>:<>
         <div className="ai-subnav">
           <button className={view==="generate"?"active":""} onClick={()=>setView("generate")}>✦ Generate</button>
-          <button className={view==="gallery"?"active":""} onClick={()=>setView("gallery")}>▣ Gallery</button>
-          <button className={view==="history"?"active":""} onClick={()=>setView("history")}>◷ History</button>
+          <button className={view==="gallery"?"active":""} onClick={()=>{setView("gallery");void loadJobs(user).catch(()=>{});}}>▣ Gallery</button>
+          <button className={view==="history"?"active":""} onClick={()=>{setView("history");void loadJobs(user).catch(()=>{});}}>◷ History</button>
           <button className={view==="usage"?"active":""} onClick={()=>setView("usage")}>◌ Usage</button>
           <button onClick={()=>void logout()}>Sign out ({user})</button>
         </div>
@@ -315,7 +342,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
               <button className="generate" disabled={!canGenerate} onClick={()=>void generate()}>{busy?"Working…":"Generate video ✦"}</button></div>
           </section>
           <aside className="preview card">
-            {latest?.videoUrl?<><video className="result-video" src={latest.videoUrl} controls playsInline style={{aspectRatio:aspectValue(latest.aspect)}}/>
+            {latest?.videoUrl?<><PrivateVideoPlayer key={latest.id} src={latest.videoUrl} aspect={aspectValue(latest.aspect)} videoClassName="result-video"/>
               <div className="result-actions"><a href={"/api/ai-room/videos/"+encodeURIComponent(latest.id)+"/download"}>Download / Backup</a>
                 <button disabled={busy} onClick={()=>void deleteJob(latest)}>Delete</button></div></>:
               <div className="preview-box" style={{aspectRatio:aspectValue(ratio)}}><div className="play">▶</div><strong>Your private video appears here</strong></div>}
@@ -333,12 +360,16 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
           visible.length===0?<div className="empty">No saved videos here yet.</div>:
           <div className={view==="gallery"?"gallery-grid":""}>{visible.map(job=>
             <article className={view==="gallery"?"gallery-item":"job"} key={job.id}>
-              {job.videoUrl&&view==="gallery"?<video src={job.videoUrl} controls playsInline style={{aspectRatio:aspectValue(job.aspect)}}/>:<div className="thumb">✦</div>}
+              {job.videoUrl&&view==="gallery"?<PrivateVideoPlayer src={job.videoUrl} aspect={aspectValue(job.aspect)}/>:<div className="thumb">✦</div>}
               <div><strong>{job.prompt}</strong><span>{job.model} · {job.duration} · {job.aspect} · {job.status}{job.contentMode==="mature"?" · Mature 18+ non-explicit":""}</span>
                 {job.error&&<div className="error-banner">{job.error}</div>}
                 <div className="result-actions">
                   {job.status==="completed"&&<a href={"/api/ai-room/videos/"+encodeURIComponent(job.id)+"/download"}>Download / Backup</a>}
                   {job.status==="completed"&&<button onClick={()=>setOpenJob(job)}>Fullscreen</button>}
+                  {view==="history"&&(job.status==="queued"||job.status==="processing")&&
+                    <button type="button" onClick={()=>void refreshPendingStatus([job],user)}>
+                      Check status · no new charge
+                    </button>}
                   <button disabled={busy} onClick={()=>void deleteJob(job)}>Delete</button>
                 </div>
               </div>
