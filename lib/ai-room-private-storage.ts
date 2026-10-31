@@ -284,6 +284,9 @@ export async function privateList(owner:string):Promise<ClientJob[]>{
     objects=(result.Contents||[]).sort((a,b)=>(b.LastModified?.getTime()||0)-(a.LastModified?.getTime()||0)).slice(0,50);
   }catch(error){
     if(error instanceof VideoEngineError)throw error;
+    // Preserve safe failure classification if an underlying Native bridge
+    // unexpectedly throws a raw SDK error instead of VideoEngineError.
+    if(nativeStorageEnabled())return nativeError(error,"list");
     throw new VideoEngineError("Unable to list private videos.",503,true);
   }finally{c.destroy();}
   // Bound OCI round-trips per Gallery load: a large history must not fan out
