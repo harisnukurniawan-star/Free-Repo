@@ -4,7 +4,7 @@ import {useState} from "react";
 /** No src-bearing media element is mounted until Play is explicitly clicked.
  * Avoids OCI range requests for every card when Gallery first renders. */
 export default function PrivateVideoPlayer({src,aspect,videoClassName}:{
-  src:string;aspect:string|number;videoClassName?:string
+  src:string;aspect?:string|number;videoClassName?:string
 }){
   const [activated,setActivated]=useState(false);
   if(activated)return <video src={src} controls playsInline autoPlay preload="metadata"
