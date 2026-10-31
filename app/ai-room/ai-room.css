@@ -130,3 +130,17 @@
 .ai-room-route .mature-confirm input{width:15px;height:15px;flex:0 0 15px;accent-color:#0f172a}
 .ai-room-route .mature-mode-unavailable{margin:0 0 12px;font-size:10px;line-height:1.5;color:#64748b}
 @media(max-width:520px){.ai-room-route .content-mode-toggle button{padding:10px 8px}}
+
+/* Private OCI video bytes are not requested until the owner presses Play. */
+.ai-room-route .private-video-activate{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:7px;width:100%;min-height:150px;border:1px solid #e2e8f0;
+  border-radius:10px;background:#111827;color:#fff;cursor:pointer;
+  padding:14px;text-align:center;
+}
+.ai-room-route .private-video-activate:hover{background:#1e293b}
+.ai-room-route .private-video-activate:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}
+.ai-room-route .private-video-activate .play-icon{font-size:24px}
+.ai-room-route .private-video-activate strong{font-size:12px;color:#fff;margin:0}
+.ai-room-route .private-video-activate small{font-size:9px;color:#cbd5e1}
+.ai-room-route .preview .private-video-activate{min-height:240px}
