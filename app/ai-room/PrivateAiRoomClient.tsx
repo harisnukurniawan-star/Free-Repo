@@ -6,6 +6,7 @@ import {estimateWanCostUsd} from "@/lib/ai-room-jobs";
 import {aspectValue,frameReferenceImage,type AiRoomAspect} from "@/lib/ai-room-framing";
 import {privateVideoSurfaces,reconcilePrivateJobs} from "@/lib/ai-room-private-views";
 import PrivateVideoPlayer from "./PrivateVideoPlayer";
+import {verifyPrivateVideoBytes} from "@/lib/ai-room-video-check";
 
 type PrivateJob={
   id:string;prompt:string;model:string;mode:string;duration:string;aspect:string;quality:string;
@@ -47,6 +48,9 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
   const [reference,setReference]=useState("");
   const [referenceName,setReferenceName]=useState("");
   const [openJob,setOpenJob]=useState<PrivateJob|null>(null);
+  const [videoCheck,setVideoCheck]=useState<{
+    id:string;state:"idle"|"checking"|"passed"|"failed";message:string
+  }>({id:"",state:"idle",message:""});
   const pollingActive=useRef(false);
   // An in-flight response from tester_a must never populate tester_b\'s browser state.
   const activeUserRef=useRef<string|null>(null);
@@ -62,6 +66,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
     imageSequence.current+=1;
     acceptedIds.current.clear();
     deletedIds.current.clear();
+    setVideoCheck({id:"",state:"idle",message:""});
     for(const request of galleryRequests.current)request.abort();
     galleryRequests.current.clear();
   },[]);
@@ -262,6 +267,22 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
       if(epoch===sessionEpoch.current)setError(e instanceof Error?e.message:"Generate failed. Check Gallery before retrying.");
     }finally{if(epoch===sessionEpoch.current)setBusy(false);}
   }
+  async function checkVideo(job:PrivateJob){
+    if(!user || !job.videoUrl || videoCheck.state==="checking")return;
+    const epoch=sessionEpoch.current;
+    setVideoCheck({id:job.id,state:"checking",message:"Checking private OCI bytes…"});
+    try{
+      const result=await verifyPrivateVideoBytes(job.id);
+      if(epoch!==sessionEpoch.current || activeUserRef.current!==user)return;
+      setVideoCheck({id:job.id,state:"passed",
+        message:"OCI Play + Download verified: "+result.bytesChecked+
+          " matching bytes. This checks the endpoints, not full MP4 decoding."});
+    }catch(e){
+      if(epoch!==sessionEpoch.current || activeUserRef.current!==user)return;
+      setVideoCheck({id:job.id,state:"failed",
+        message:e instanceof Error?e.message:"Private video check failed."});
+    }
+  }
   async function deleteJob(job:PrivateJob){
     if(!window.confirm("Permanently delete this video from private OCI storage? This cannot be undone."))return;
     const epoch=sessionEpoch.current;
@@ -363,8 +384,16 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
               {job.videoUrl&&view==="gallery"?<PrivateVideoPlayer src={job.videoUrl} aspect={aspectValue(job.aspect)}/>:<div className="thumb">✦</div>}
               <div><strong>{job.prompt}</strong><span>{job.model} · {job.duration} · {job.aspect} · {job.status}{job.contentMode==="mature"?" · Mature 18+ non-explicit":""}</span>
                 {job.error&&<div className="error-banner">{job.error}</div>}
+                {view==="gallery"&&videoCheck.id===job.id&&videoCheck.state!=="idle"&&
+                  <div className={videoCheck.state==="failed"?"error-banner":"info-banner"}
+                    role="status">{videoCheck.message}</div>}
                 <div className="result-actions">
                   {job.status==="completed"&&<a href={"/api/ai-room/videos/"+encodeURIComponent(job.id)+"/download"}>Download / Backup</a>}
+                  {view==="gallery"&&job.status==="completed"&&
+                    <button type="button" disabled={videoCheck.state==="checking"}
+                      onClick={()=>void checkVideo(job)}>
+                      {videoCheck.id===job.id&&videoCheck.state==="checking"?"Checking OCI…":"Verify OCI · no charge"}
+                    </button>}
                   {job.status==="completed"&&<button onClick={()=>setOpenJob(job)}>Fullscreen</button>}
                   {view==="history"&&(job.status==="queued"||job.status==="processing")&&
                     <button type="button" onClick={()=>void refreshPendingStatus([job],user)}>
