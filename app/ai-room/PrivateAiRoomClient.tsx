@@ -275,8 +275,9 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
       const result=await verifyPrivateVideoBytes(job.id);
       if(epoch!==sessionEpoch.current || activeUserRef.current!==user)return;
       setVideoCheck({id:job.id,state:"passed",
-        message:"OCI Play + Download verified: "+result.bytesChecked+
-          " matching bytes. This checks the endpoints, not full MP4 decoding."});
+        message:"OCI verified: "+result.bytesChecked+
+          " bytes match across Play/Download; anonymous access denied. "+
+          "Full MP4 playback and two-account isolation still require separate checks."});
     }catch(e){
       if(epoch!==sessionEpoch.current || activeUserRef.current!==user)return;
       setVideoCheck({id:job.id,state:"failed",

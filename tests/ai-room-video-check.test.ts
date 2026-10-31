@@ -2,41 +2,70 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {verifyPrivateVideoBytes} from "../lib/ai-room-video-check";
 
-const SAMPLE=new Uint8Array(32).map((_,i)=>i);
-function mockResponse(bytes= SAMPLE,status=206,total=128){
-  return new Response(bytes,{status,headers:{
+const sample=(start:number,end:number,offset=0)=>new Uint8Array(end-start+1)
+  .map((_,i)=>(start+i+offset)%256);
+function rangeResponse(start:number,end:number,total=128,offset=0){
+  const bytes=sample(start,end,offset);
+  return new Response(bytes,{status:206,headers:{
     "Content-Type":"video/mp4",
+    "Cache-Control":"private, no-store",
     "Content-Length":String(bytes.length),
-    "Content-Range":"bytes 0-31/"+total
+    "Content-Range":"bytes "+start+"-"+end+"/"+total
   }});
 }
-test("read-only OCI self-check compares matching stream and download ranges",async()=>{
-  const calls:string[]=[];
+function noSession(){
+  return new Response(JSON.stringify({error:"Sign-in required."}),{status:401,
+    headers:{"Content-Type":"application/json","Cache-Control":"no-store"}});
+}
+test("live OCI probe matches first and last bytes and proves anonymous access denied",async()=>{
+  const calls:{route:string;range:string;credentials:RequestCredentials}[]=[];
   const fake=(async(input:string|URL|Request,init?:RequestInit)=>{
-    const url=String(input);calls.push(url);
+    const path=String(input),range=(init?.headers as {Range:string}).Range;
+    calls.push({route:path,range,credentials:init?.credentials||"same-origin"});
     assert.equal(init?.method,"GET");
-    assert.equal(init?.headers && (init.headers as {Range:string}).Range,"bytes=0-31");
-    return mockResponse();
+    const match=/^bytes=(\d+)-(\d+)$/.exec(range);
+    assert.ok(match);
+    if(init?.credentials==="omit")return noSession();
+    return rangeResponse(Number(match[1]),Number(match[2]));
   }) as typeof fetch;
-  const result=await verifyPrivateVideoBytes("fast:text:video_123",fake);
-  assert.deepEqual(result,{bytesChecked:32,totalBytes:128});
-  assert.equal(calls.length,2);
-  assert.match(calls[0],/\/stream$/);
-  assert.match(calls[1],/\/download$/);
+  const result=await verifyPrivateVideoBytes("v3prime:text:video_123",fake);
+  assert.deepEqual(result,{bytesChecked:128,totalBytes:128,anonymousDenied:true});
+  assert.equal(calls.length,6);
+  assert.deepEqual(calls.map(c=>c.credentials),
+    ["same-origin","same-origin","same-origin","same-origin","omit","omit"]);
+  assert.deepEqual(calls.map(c=>c.range),
+    ["bytes=0-31","bytes=0-31","bytes=96-127","bytes=96-127","bytes=0-31","bytes=0-31"]);
+  assert.ok(calls.every(c=>c.route.startsWith("/api/ai-room/videos/")));
 });
-test("OCI self-check fails closed on denied download or byte mismatch",async()=>{
-  let count=0;
-  const denied=(async()=>++count===1?mockResponse():new Response("Denied",{status:403})) as typeof fetch;
-  await assert.rejects(()=>verifyPrivateVideoBytes("test:id",denied),/HTTP 403/);
-  assert.equal(count,2);
-  count=0;
-  const mismatched=(async()=>mockResponse(++count===1?SAMPLE:
-    new Uint8Array(32).fill(7))) as typeof fetch;
-  await assert.rejects(()=>verifyPrivateVideoBytes("test:id",mismatched),/different video bytes/);
+test("probe stops before anonymous checks if the private bytes disagree",async()=>{
+  let i=0;
+  const fake=(async(_input:RequestInfo|URL,init?:RequestInit)=>{
+    i++;
+    const match=/bytes=(\d+)-(\d+)/.exec((init?.headers as {Range:string}).Range);
+    assert.ok(match);
+    return rangeResponse(Number(match[1]),Number(match[2]),128,i===2?1:0);
+  }) as typeof fetch;
+  await assert.rejects(()=>verifyPrivateVideoBytes("fast:text:example",fake),/different opening video bytes/);
+  assert.equal(i,2);
 });
-test("OCI self-check cannot be used to inject arbitrary URLs or send requests",async()=>{
+test("probe fails closed when signed-out request receives video or wrong denial",async()=>{
+  for(const bad of [rangeResponse(0,31),new Response("Denied",{status:403}),
+    new Response("login",{status:401,headers:{"Content-Type":"text/html"}})]){
+    let count=0;
+    const fake=(async(_input:RequestInfo|URL,init?:RequestInit)=>{
+      count++;
+      if(init?.credentials==="omit")return bad.clone();
+      const match=/bytes=(\d+)-(\d+)/.exec((init?.headers as {Range:string}).Range);
+      assert.ok(match);
+      return rangeResponse(Number(match[1]),Number(match[2]));
+    }) as typeof fetch;
+    await assert.rejects(()=>verifyPrivateVideoBytes("fast:text:example",fake),/not safely denied/);
+    assert.equal(count,5);
+  }
+});
+test("probe never accepts an arbitrary path or sends a paid request",async()=>{
   let invoked=0;
-  const fake=(async()=>{invoked++;return mockResponse();}) as typeof fetch;
-  await assert.rejects(()=>verifyPrivateVideoBytes("../accounts",fake),/Invalid saved video/);
+  const fake=(async()=>{invoked++;return noSession();}) as typeof fetch;
+  await assert.rejects(()=>verifyPrivateVideoBytes("../users",fake),/Invalid saved video/);
   assert.equal(invoked,0);
 });
