@@ -6,7 +6,7 @@ import {getSignedUrl} from "@aws-sdk/s3-request-presigner";
 import {getVideoEngine, parseVideoRequest, VideoEngineError, type VideoJob} from "./video-engine";
 import {privateVideoConfigured} from "./ai-room-private-auth";
 import {matureAccountEligible} from "./ai-room-content-policy";
-import {nativeStorageEnabled,privateVideoPath,NativeObjectStore} from "./ai-room-native-objects";
+import {nativeStorageEnabled,privateVideoPath,NativeObjectStore,nativeError} from "./ai-room-native-objects";
 import {NativeCommandBridge} from "./ai-room-native-bridge";
 
 const REGION="ap-batam-1";
