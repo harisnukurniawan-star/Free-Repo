@@ -320,7 +320,8 @@ test("native list operator diagnostics expose fixed failure stage only",()=>{
     const entry=lines[0]||"";
     assert.match(entry,/"phase":"decode"/);
     assert.match(entry,/"errorFamily":"TypeError"/);
-    assert.doesNotMatch(entry,/SECRET|DO-NOT-LEAK|jobs\\/alice/);
+    assert.doesNotMatch(entry,/SECRET|DO-NOT-LEAK/);
+    assert.equal(entry.includes("jobs/alice"),false);
   }finally{console.warn=previous;}
 });
 
