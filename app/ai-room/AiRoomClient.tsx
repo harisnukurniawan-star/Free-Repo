@@ -5,12 +5,13 @@ import { createVideoJobPoller } from "@/lib/ai-room-polling";
 import { WAN_CATALOG, WAN_MODEL_NAMES, isWanModel, type WanModel, type WanDuration, type WanQuality } from "@/lib/wan-models";
 import { estimateWanCostUsd, formatElapsed, normalizeStoredJob, type StoredAiRoomJob } from "@/lib/ai-room-jobs";
 import UsageCostView from "./UsageCostView";
+import GenerationPinGate from "./GenerationPinGate";
 import {aspectValue, frameReferenceImage, matchesAspect, type AiRoomAspect} from "@/lib/ai-room-framing";
 import type {AiRoomContentMode} from "@/lib/ai-room-content-policy";
 
 type Mode="text"|"image";
 type View="generate"|"gallery"|"history"|"usage";
-type ProviderState={checked:boolean;provider:string;realGeneration:boolean;generationLocked:boolean;generationAuthRequired:boolean;matureModeAvailable:boolean};
+type ProviderState={checked:boolean;provider:string;realGeneration:boolean;generationLocked:boolean;generationAuthRequired:boolean;generationPinEnabled:boolean;generationPinReady:boolean;matureModeAvailable:boolean};
 const jobStatuses={queued:"Queued",processing:"Processing",completed:"Ready",failed:"Failed"} as const;
 
 export default function AiRoomClient({initialProviderState}:{initialProviderState:ProviderState}){
@@ -27,6 +28,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
   const [jobs,setJobs]=useState<StoredAiRoomJob[]>([]);
   const [submitting,setSubmitting]=useState(false);
   const [accessKey,setAccessKey]=useState("");
+  const [pinActive,setPinActive]=useState(false);
   const referenceReadId=useRef(0);
   const submissionInFlight=useRef(false);
   const poller=useRef<ReturnType<typeof createVideoJobPoller>|null>(null);
@@ -60,7 +62,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
     },0);
     return()=>window.clearTimeout(timer);
   },[]);
-  useEffect(()=>{let active=true;fetch("/api/ai-room/health").then(async response=>{const data=await response.json();if(active)setProviderState({checked:true,provider:data.provider||"unknown",realGeneration:Boolean(data.realGeneration),generationLocked:Boolean(data.generationLocked),generationAuthRequired:true,matureModeAvailable:Boolean(data.matureModeAvailable)})}).catch(()=>{if(active)setProviderState({checked:true,provider:"unavailable",realGeneration:false,generationLocked:true,generationAuthRequired:true,matureModeAvailable:false})});return()=>{active=false}},[]);
+  useEffect(()=>{let active=true;fetch("/api/ai-room/health").then(async response=>{const data=await response.json();if(active)setProviderState({checked:true,provider:data.provider||"unknown",realGeneration:Boolean(data.realGeneration),generationLocked:Boolean(data.generationLocked),generationAuthRequired:true,generationPinEnabled:Boolean(data.generationPinEnabled),generationPinReady:Boolean(data.generationPinReady),matureModeAvailable:Boolean(data.matureModeAvailable)})}).catch(()=>{if(active)setProviderState({checked:true,provider:"unavailable",realGeneration:false,generationLocked:true,generationAuthRequired:true,generationPinEnabled:false,generationPinReady:false,matureModeAvailable:false})});return()=>{active=false}},[]);
   useEffect(()=>{
     if(!hydrated||!historyWritable)return;
     try{
@@ -92,13 +94,14 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
   },[hasPending]);
 
   useEffect(()=>{
-    const timer=window.setTimeout(()=>{try{setAccessKey(sessionStorage.getItem("ai-room-generation-key")||"")}catch{}},0);
+    const timer=window.setTimeout(()=>{try{if(!initialProviderState.generationPinEnabled)setAccessKey(sessionStorage.getItem("ai-room-generation-key")||"");else sessionStorage.removeItem("ai-room-generation-key")}catch{}},0);
     return()=>window.clearTimeout(timer);
-  },[]);
+  },[initialProviderState.generationPinEnabled]);
+  useEffect(()=>{if(providerState.generationPinEnabled){try{sessionStorage.removeItem("ai-room-generation-key")}catch{}}},[providerState.generationPinEnabled]);
 
   const modelConfig=WAN_CATALOG[model];
   const estimate=useMemo(()=>estimateWanCostUsd({model,mode,duration,quality}),[model,mode,duration,quality]);
-  const canGenerate=providerState.realGeneration&&!providerState.generationLocked&&(!providerState.generationAuthRequired||accessKey.trim().length>0)&&estimate!==null&&prompt.trim().length>=3&&(mode==="text"||!!referenceImage)&&(contentMode==="standard"||(providerState.matureModeAvailable&&adultConfirmed&&mode==="text"));
+  const canGenerate=providerState.realGeneration&&!providerState.generationLocked&&(!providerState.generationAuthRequired||(providerState.generationPinEnabled?pinActive:accessKey.trim().length>0))&&estimate!==null&&prompt.trim().length>=3&&(mode==="text"||!!referenceImage)&&(contentMode==="standard"||(providerState.matureModeAvailable&&adultConfirmed&&mode==="text"));
   const readyJob=jobs.find(j=>j.videoUrl);
   const readyVideo=readyJob?.videoUrl;
   const completedJobs=jobs.filter(j=>j.videoUrl);
@@ -206,7 +209,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
     try{
       // Prepare the first frame before making the single chargeable POST.
       const imageUrl=mode==="image"?await frameReferenceImage(referenceImage,submission.aspect):undefined;
-      const response=await fetch("/api/ai-room/generate",{method:"POST",headers:{"Content-Type":"application/json","x-ai-room-access-key":accessKey},body:JSON.stringify({prompt:submittedPrompt,...submission,imageUrl})});
+      const response=await fetch("/api/ai-room/generate",{method:"POST",headers:{"Content-Type":"application/json",...(providerState.generationPinEnabled?{}:{"x-ai-room-access-key":accessKey})},body:JSON.stringify({prompt:submittedPrompt,...submission,imageUrl})});
       const data=await response.json().catch(()=>{throw new Error("Could not read the submission response. Check your existing jobs before trying again.")});
       if(!response.ok||!data.job)throw new Error(data.error||"Generation request failed");
       setJobs(current=>[{
@@ -281,8 +284,9 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
               <label><span>Quality</span><select value={quality} onChange={e=>setQuality(e.target.value as WanQuality)}>{modelConfig.qualities.map(value=><option key={value}>{value}</option>)}</select></label>
             </div>
             {!providerState.realGeneration&&providerState.checked&&<div className="info-banner">Preview mode — connect the fal.ai provider to enable real video generation.</div>}
-            {providerState.generationLocked&&<div className="info-banner" role="status">Paid generation is locked until the server administrator configures AI_ROOM_GENERATE_ACCESS_KEY (minimum 16 characters). No fal.ai credit can be charged while locked.</div>}
-            {providerState.generationAuthRequired&&!providerState.generationLocked&&<label className="field ai-access-key"><span>Generation access key</span><input type="password" value={accessKey} autoComplete="off" placeholder="Enter your AI ROOM access key" onChange={e=>{const key=e.target.value;setAccessKey(key);try{sessionStorage.setItem("ai-room-generation-key",key)}catch{}}}/><small>Kept only in this browser tab session. Required to authorize paid generation.</small></label>}
+            {providerState.generationLocked&&<div className="info-banner" role="status">{providerState.generationPinEnabled?"Generation PIN setup is incomplete. Paid generation remains disabled.":"Paid generation is locked until the operator configures AI_ROOM_GENERATE_ACCESS_KEY (minimum 16 characters). No fal.ai credit can be charged while locked."}</div>}
+            {providerState.generationPinEnabled&&!providerState.generationLocked&&<GenerationPinGate onChange={setPinActive}/>}
+            {providerState.generationAuthRequired&&!providerState.generationPinEnabled&&!providerState.generationLocked&&<label className="field ai-access-key"><span>Generation access key</span><input type="password" value={accessKey} autoComplete="off" placeholder="Enter your AI ROOM access key" onChange={e=>{const key=e.target.value;setAccessKey(key);try{sessionStorage.setItem("ai-room-generation-key",key)}catch{}}}/><small>Kept only in this browser tab session. Required to authorize paid generation.</small></label>}
             {error&&<div className="error-banner">{error}</div>}
             <div className="generate-row"><div><small>Est. fal.ai charge · {duration} · {quality}</small><strong>{estimate===null?"Unavailable":`~${estimate.toFixed(2)} USD`}</strong><small>Estimated only · charged from existing fal.ai credit when submitted, not a live balance. <a href="https://fal.ai/dashboard/billing" target="_blank" rel="noopener noreferrer">Check actual balance at fal.ai ↗</a></small></div><button className="generate" disabled={!canGenerate||submitting} onClick={generate}>{submitting?"Submitting…":"Generate video ✦"}</button></div>
           </section>

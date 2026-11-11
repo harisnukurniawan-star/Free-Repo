@@ -14,7 +14,7 @@ test("paid generation is locked when the server access key is missing or weak", 
   const original=process.env.AI_ROOM_GENERATE_ACCESS_KEY;
   t.after(()=>{if(original===undefined)delete process.env.AI_ROOM_GENERATE_ACCESS_KEY;else process.env.AI_ROOM_GENERATE_ACCESS_KEY=original});
   delete process.env.AI_ROOM_GENERATE_ACCESS_KEY;
-  assert.deepEqual(generationAccessState(),{generationLocked:true,generationAuthRequired:true});
+  assert.deepEqual(generationAccessState(),{generationLocked:true,generationAuthRequired:true,generationPinEnabled:false,generationPinReady:true});
   assert.throws(()=>assertGenerationAccess(request()), (error:unknown)=>error instanceof VideoEngineError&&error.httpStatus===503);
   process.env.AI_ROOM_GENERATE_ACCESS_KEY="short";
   assert.throws(()=>assertGenerationAccess(request("short")), (error:unknown)=>error instanceof VideoEngineError&&error.httpStatus===503);
@@ -24,7 +24,7 @@ test("invalid, missing, or oversized browser access keys cannot authorize a char
   const original=process.env.AI_ROOM_GENERATE_ACCESS_KEY;
   t.after(()=>{if(original===undefined)delete process.env.AI_ROOM_GENERATE_ACCESS_KEY;else process.env.AI_ROOM_GENERATE_ACCESS_KEY=original});
   process.env.AI_ROOM_GENERATE_ACCESS_KEY="correct-access-key-1234";
-  assert.deepEqual(generationAccessState(),{generationLocked:false,generationAuthRequired:true});
+  assert.deepEqual(generationAccessState(),{generationLocked:false,generationAuthRequired:true,generationPinEnabled:false,generationPinReady:true});
   for (const key of [undefined,"wrong-access-key-1234","x".repeat(513)]){
     assert.throws(()=>assertGenerationAccess(request(key)), (error:unknown)=>error instanceof VideoEngineError&&error.httpStatus===401);
   }

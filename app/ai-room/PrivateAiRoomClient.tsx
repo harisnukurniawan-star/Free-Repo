@@ -1,6 +1,7 @@
 "use client";
 import {useCallback,useEffect,useMemo,useRef,useState} from "react";
 import Link from "next/link";
+import GenerationPinGate from "./GenerationPinGate";
 import {WAN_CATALOG,WAN_MODEL_NAMES,isWanModel,type WanModel,type WanDuration,type WanQuality} from "@/lib/wan-models";
 import {estimateWanCostUsd} from "@/lib/ai-room-jobs";
 import {aspectValue,frameReferenceImage,type AiRoomAspect} from "@/lib/ai-room-framing";
@@ -23,12 +24,13 @@ async function asJson(response:Response):Promise<Record<string,unknown>>{
   return obj;
 }
 
-export default function PrivateAiRoomClient({ready}:{ready:boolean}){
+export default function PrivateAiRoomClient({ready,pinEnabled}:{ready:boolean;pinEnabled:boolean}){
   const [user,setUser]=useState<string|null>(null);
   const [checking,setChecking]=useState(true);
   const [loginName,setLoginName]=useState("");
   const [password,setPassword]=useState("");
   const [busy,setBusy]=useState(false);
+  const [pinActive,setPinActive]=useState(false);
   const [error,setError]=useState("");
   const [view,setView]=useState<Screen>("generate");
   const [jobs,setJobs]=useState<PrivateJob[]>([]);
@@ -189,7 +191,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
       if(typeof data.user!=="string")throw new Error("Invalid session");
       invalidateSession();
       activeUserRef.current=data.user;
-      setUser(data.user);setPassword("");setMatureEligible(data.matureEligible===true);
+      setUser(data.user);setPassword("");setMatureEligible(data.matureEligible===true);setPinActive(false);
       setJobs([]);setJobsLoadState("loading");setJobsLoadError("");
       setContentMode("standard");setAdultConfirmed(false);setImageConsentConfirmed(false);
     }catch(e){setError(e instanceof Error?e.message:"Login failed");}
@@ -200,7 +202,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
       await asJson(await fetch("/api/ai-room/session",{method:"DELETE"}));
       invalidateSession();
       activeUserRef.current=null;
-      setUser(null);setBusy(false);setJobs([]);setJobsLoadState("idle");setJobsLoadError("");setOpenJob(null);setReference("");setPrompt("");setError("");
+      setUser(null);setPinActive(false);setBusy(false);setJobs([]);setJobsLoadState("idle");setJobsLoadError("");setOpenJob(null);setReference("");setPrompt("");setError("");
       setMatureEligible(false);setContentMode("standard");setAdultConfirmed(false);setImageConsentConfirmed(false);
     }catch(e){setError(e instanceof Error?e.message:"Sign-out failed");}
   }
@@ -244,7 +246,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
     if(!(WAN_CATALOG[value].qualities as readonly string[]).includes(quality))setQuality("720p");
   }
   const estimate=useMemo(()=>estimateWanCostUsd({model,mode,duration,quality}),[model,mode,duration,quality]);
-  const canGenerate=ready&&Boolean(user)&&!busy&&prompt.trim().length>=3&&(mode==="text"||Boolean(reference))&&estimate!==null&&(contentMode==="standard"||(matureEligible&&adultConfirmed&&(mode==="text"||imageConsentConfirmed)));
+  const canGenerate=ready&&Boolean(user)&&(!pinEnabled||pinActive)&&!busy&&prompt.trim().length>=3&&(mode==="text"||Boolean(reference))&&estimate!==null&&(contentMode==="standard"||(matureEligible&&adultConfirmed&&(mode==="text"||imageConsentConfirmed)));
   async function generate(){
     if(!canGenerate)return;
     const epoch=sessionEpoch.current;
@@ -358,6 +360,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
               <label><span>Aspect</span><select value={ratio} onChange={e=>setRatio(e.target.value as AiRoomAspect)}><option>16:9</option><option>9:16</option><option>1:1</option></select></label>
               <label><span>Quality</span><select value={quality} onChange={e=>setQuality(e.target.value as WanQuality)}>{WAN_CATALOG[model].qualities.map(q=><option key={q}>{q}</option>)}</select></label>
             </div>
+            {pinEnabled&&<GenerationPinGate onChange={setPinActive} refreshKey={user||undefined}/>}
             <div className="info-banner">Your generated file will transfer from fal.ai into private OCI Object Storage. The reference is processed by fal.ai during inference.</div>
             {jobsLoadState==="error"&&<div className="info-banner" role="status">Gallery is temporarily unavailable. New generation is allowed only if the server can verify OCI usage and storage. If an earlier submission is uncertain, wait for Gallery recovery before repeating the same prompt to avoid duplicate charges.</div>}
             <div className="generate-row"><div><small>Estimated fal.ai cost</small><strong>{estimate===null?"Unavailable":"~$"+estimate.toFixed(2)}</strong><small>Daily generation limit applies.</small></div>

@@ -8,7 +8,7 @@ export const dynamic="force-dynamic";
 export default function AiRoomPage(){
   const provider=process.env.AI_ROOM_VIDEO_PROVIDER?.toLowerCase()||"development";
   const realGeneration=provider==="fal"&&Boolean(process.env.AI_ROOM_FAL_KEY);
-  if(privateVideoEnabled())return <PrivateAiRoomClient ready={realGeneration&&privateVideoConfigured()}/>;
+  if(privateVideoEnabled())return <PrivateAiRoomClient ready={realGeneration&&privateVideoConfigured()} pinEnabled={generationAccessState().generationPinEnabled}/>;
   return <AiRoomClient initialProviderState={{
     checked:true,provider,realGeneration,...generationAccessState(),matureModeAvailable:matureContentModeEnabled()
   }}/>;

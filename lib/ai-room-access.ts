@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { VideoEngineError } from "./video-engine";
+import {generationPinEnabled,generationPinConfigured} from "./ai-room-generation-pin";
 
 /**
  * Block chargeable requests unless an operator-configured secret is present.
@@ -21,9 +22,13 @@ export function assertGenerationAccess(request: Request): void {
   }
 }
 
-export function generationAccessState(): {generationLocked: boolean; generationAuthRequired: true} {
+export function generationAccessState(){
+  const pin=generationPinEnabled();
   return {
-    generationLocked: !process.env.AI_ROOM_GENERATE_ACCESS_KEY || process.env.AI_ROOM_GENERATE_ACCESS_KEY.length < 16,
-    generationAuthRequired: true,
+    generationLocked:pin?!generationPinConfigured():
+      !process.env.AI_ROOM_GENERATE_ACCESS_KEY || process.env.AI_ROOM_GENERATE_ACCESS_KEY.length < 16,
+    generationAuthRequired:true as const,
+    generationPinEnabled:pin,
+    generationPinReady:!pin||generationPinConfigured()
   };
 }
