@@ -9,7 +9,8 @@ const at="2026-10-18T07:00:00Z";
 const hc:HcActivity={checkedAt:at,website:{state:"online",code:200,checkedAt:at},github:{
   prsSource:"snapshot",runsSource:"snapshot",issuesSource:"snapshot",commitsSource:"snapshot",
   prs:[{number:397,title:"Fix bootstrap",draft:false,updatedAt:at,url:"https://github.com/jakgunn20-maker/hcbp-hub/pull/397"}],
-  runs:[],issuesCount:0,commits:[]},vercel:{source:"unavailable",production:null,failedPreviews:0},signals:[]};
+  runs:[],issuesCount:0,commits:[]},vercel:{source:"unavailable",production:null,failedPreviews:0},
+  railway:{source:"unavailable",httpCode:null,readyState:"unavailable",database:"unknown",schema:"unknown",runtime:"unknown",backendMode:"unknown",signerReady:null,checkedAt:at},signals:[]};
 const hasnaria:HasnariaActivity={checkedAt:at,actionsSource:"unavailable",issuesSource:"unavailable",runs:[],issueCount:0,signals:[],
   website:{state:"error",httpCode:503,checkedAt:at}};
 const hasData:HasnariaData={checkedAt:at,githubSource:"snapshot",githubNote:"Last snapshot",openPrs:[{
