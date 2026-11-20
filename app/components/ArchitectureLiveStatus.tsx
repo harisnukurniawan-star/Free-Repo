@@ -66,6 +66,13 @@ export function buildHcArchitectureNodes({hc,oci}:{hc:HcActivity;oci?:DbOverview
       state:hcWeb.state==="online"?"ok":hcWeb.state==="error"?"bad":"unknown",checkedAt:hcWeb.checkedAt,
       detail:"Hanya pemeriksaan HTTP homepage; login, transaksi, dan workflow belum otomatis diuji.",
       href:"https://hcconnect.site/"},
+    {id:"hc-railway",title:"Railway API",sub:"Backend · Bastion relay",
+      info:hc.railway.source==="unavailable"?"Belum terpantau":hc.railway.readyState==="ready"?"Ready · DB "+hc.railway.database:"Readiness error",
+      source:hc.railway.source,
+      state:hc.railway.source==="unavailable"?"unknown":hc.railway.readyState==="error"?"bad":hc.railway.database==="ok"&&hc.railway.schema==="current"&&hc.railway.signerReady===true?"ok":"warning",
+      checkedAt:hc.railway.checkedAt,
+      detail:"HTTP readiness: "+(hc.railway.httpCode??"tidak tersedia")+". Database: "+hc.railway.database+". Schema: "+hc.railway.schema+". Runtime: "+hc.railway.runtime+". Backend mode: "+hc.railway.backendMode+". OCI signer: "+(hc.railway.signerReady===null?"belum terverifikasi":hc.railway.signerReady?"ready":"not ready")+".",
+      href:"https://hcconnect.site/api/control-room/bridge-status"},
     {id:"hc-oci",title:"OCI HeatWave",sub:"DB · Function · Backup",
       info:oci?.mode==="snapshot"?"DB SNAPSHOT":oci?.connected?"Metadata tersedia":hcMonitor?.conclusion==="success"?"Monitor sukses":"Belum tervalidasi",
       source:oci?.mode==="snapshot"?"snapshot":oci?.connected?"live":hc.github.runsSource==="snapshot"?"snapshot":"unavailable",
@@ -116,23 +123,28 @@ function NodeBox({node,onSelect,selected}:{node:ArchitectureNode;onSelect:(node:
   </button>;
 }
 function ProjectDiagram({title,items,selected,onSelect,summary}:{title:string;items:ArchitectureNode[];selected:string;onSelect:(node:ArchitectureNode)=>void;summary:string}) {
-  const hc=items.length===4;
+  const hc=items.length===5;
   return <article className="live-arch-card">
     <div className="live-arch-card-head"><strong>{title}</strong><span>DIAGRAM STATUS · READ ONLY</span></div>
-    <div className={"live-arch-track "+(hc?"live-arch-track-hc":"live-arch-track-has")}>
+    {hc ? <div className="live-arch-track live-arch-track-hc">
+      {items.map((node,index)=><React.Fragment key={node.id}>
+        {index>0&&<span className="live-arch-arrow" aria-hidden="true">→</span>}
+        <NodeBox node={node} onSelect={onSelect} selected={selected===node.id}/>
+      </React.Fragment>)}
+    </div> : <div className="live-arch-track live-arch-track-has">
       <NodeBox node={items[0]} onSelect={onSelect} selected={selected===items[0].id}/>
       <span className="live-arch-arrow" aria-hidden="true">→</span>
       <NodeBox node={items[1]} onSelect={onSelect} selected={selected===items[1].id}/>
       <span className="live-arch-arrow" aria-hidden="true">→</span>
       <div className="live-arch-tail">
         <NodeBox node={items[2]} onSelect={onSelect} selected={selected===items[2].id}/>
-        <span className="live-arch-arrow" aria-hidden="true">{hc?"→":"↳"}</span>
-        {hc?<NodeBox node={items[3]} onSelect={onSelect} selected={selected===items[3].id}/>:<div className="live-arch-stack">
+        <span className="live-arch-arrow" aria-hidden="true">↳</span>
+        <div className="live-arch-stack">
           <NodeBox node={items[3]} onSelect={onSelect} selected={selected===items[3].id}/>
           <NodeBox node={items[4]} onSelect={onSelect} selected={selected===items[4].id}/>
-        </div>}
+        </div>
       </div>
-    </div>
+    </div>}
     <p>{summary}</p>
   </article>;
 }
