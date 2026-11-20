@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import type { HcActivity } from "@/lib/hc-connect-activity";
 import type { HasnariaActivity } from "@/lib/hasnaria-activity";
 import type { HasnariaData, Status } from "@/lib/hasnaria-monitoring";
@@ -127,10 +127,10 @@ function ProjectDiagram({title,items,selected,onSelect,summary}:{title:string;it
   return <article className="live-arch-card">
     <div className="live-arch-card-head"><strong>{title}</strong><span>DIAGRAM STATUS · READ ONLY</span></div>
     {hc ? <div className="live-arch-track live-arch-track-hc">
-      {items.map((node,index)=><React.Fragment key={node.id}>
+      {items.map((node,index)=><Fragment key={node.id}>
         {index>0&&<span className="live-arch-arrow" aria-hidden="true">→</span>}
         <NodeBox node={node} onSelect={onSelect} selected={selected===node.id}/>
-      </React.Fragment>)}
+      </Fragment>)}
     </div> : <div className="live-arch-track live-arch-track-has">
       <NodeBox node={items[0]} onSelect={onSelect} selected={selected===items[0].id}/>
       <span className="live-arch-arrow" aria-hidden="true">→</span>
