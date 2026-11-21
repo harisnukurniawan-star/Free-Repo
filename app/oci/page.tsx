@@ -1,4 +1,5 @@
 import DatabaseSidebar from "@/app/components/DatabaseSidebar";
+import "./oci.css";
 
 const modules = [
   { name: "Compute & VM", detail: "Instance inventory, lifecycle state, shape and capacity", icon: "▣" },
