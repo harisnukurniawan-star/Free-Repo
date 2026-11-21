@@ -196,7 +196,7 @@ export default function OciInfrastructurePage() {
                 <h3>HC Connect Bastion API</h3>
                 <span className="oci-bridge-state">Online</span>
               </div>
-              <p>This is a separate HC Connect backend service. Railway reported it online during this audit; that does not prove it is the OCI MCP gateway's configured destination or establish OCI application health.</p>
+              <p>This is a separate HC Connect backend service. Railway reported it online during this audit; that does not prove it is the OCI MCP gateway&apos;s configured destination or establish OCI application health.</p>
               <small>HC Connect and OCI Infrastructure remain separate modules in the Control Room.</small>
             </article>
           </div>
