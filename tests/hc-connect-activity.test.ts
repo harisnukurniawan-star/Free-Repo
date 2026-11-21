@@ -28,6 +28,8 @@ test("HC Overview reads its own project, classifies errors and backlog, without 
       {number:397,title:"PR must be excluded",pull_request:{url:"present"},html_url:"https://github.com/jakgunn20-maker/hcbp-hub/pull/397"}]);
     if(url.includes("/commits?"))return json([{sha:"abcdef012345",commit:{message:"Fix header",committer:{date:new Date().toISOString()}},html_url:"https://github.com/jakgunn20-maker/hcbp-hub/commit/abcdef012345"}]);
     if(url==="https://hcconnect.site/")return new Response("OK",{status:200});
+    if(url==="https://hcconnect.site/api/ready")return json({success:true,status:"ready",dependencies:{database:"ok",schema:"current"}});
+    if(url==="https://hcconnect.site/api/control-room/bridge-status")return json({runtime:"railway",backendMode:"railway",signerReady:true});
     throw Error("Unexpected outbound request: "+url);
   }, async()=>{
     const d=await loadHcActivity();
@@ -38,17 +40,26 @@ test("HC Overview reads its own project, classifies errors and backlog, without 
     assert.deepEqual(d.signals.map(s=>s.category).sort(),["backlog","error","issue"]);
     assert.equal(d.vercel.source,"unavailable");
     assert.equal(d.vercel.failedPreviews,0);
+    assert.equal(d.railway.source,"live");
+    assert.equal(d.railway.readyState,"ready");
+    assert.equal(d.railway.database,"ok");
+    assert.equal(d.railway.schema,"current");
+    assert.equal(d.railway.runtime,"railway");
+    assert.equal(d.railway.signerReady,true);
   });
-  assert.equal(requests.length,5);
-  assert.ok(requests.every(u=>u.includes("github.com")||u==="https://hcconnect.site/"));
+  assert.equal(requests.length,7);
+  assert.ok(requests.every(u=>u.includes("github.com")||u.startsWith("https://hcconnect.site/")));
 });
 test("Failed monitoring never appears as zero confirmed bugs or healthy website", async()=>{
-  await withMock(url=> url==="https://hcconnect.site/" ? new Response("Down",{status:503}) : new Response("Rate limit",{status:403}),async()=>{
+  await withMock(url=> url==="https://hcconnect.site/" ? new Response("Down",{status:503}) : url==="https://hcconnect.site/api/ready" ? new Response("Unavailable",{status:503}) : url==="https://hcconnect.site/api/control-room/bridge-status" ? new Response("Unavailable",{status:503}) : new Response("Rate limit",{status:403}),async()=>{
     const d=await loadHcActivity();
     assert.equal(d.github.runsSource,"snapshot");
     assert.equal(d.github.issuesSource,"snapshot");
     assert.equal(d.website.state,"error");
     assert.equal(d.website.code,503);
+    assert.equal(d.railway.source,"live");
+    assert.equal(d.railway.readyState,"error");
+    assert.equal(d.railway.database,"unknown");
     assert.equal(d.github.prs.length,7);
     assert.ok(d.signals.some(s=>s.category==="backlog"));
     assert.ok(d.signals.some(s=>s.id==="site-http"));

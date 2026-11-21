@@ -10,6 +10,7 @@ export type HcActivity = {
   website: { code: number | null; state: "online" | "error" | "unavailable"; checkedAt: string };
   github: { prsSource: HcSource; runsSource: HcSource; issuesSource: HcSource; commitsSource: HcSource; prs: HcPr[]; runs: HcRun[]; issuesCount: number; commits: HcCommit[] };
   vercel: { source: HcSource; production: { state: string; at: string; url: string } | null; failedPreviews: number };
+  railway: { source: HcSource; httpCode: number | null; readyState: "ready" | "error" | "unavailable"; database: "ok" | "error" | "unknown"; schema: "current" | "outdated" | "unknown"; runtime: string; backendMode: string; signerReady: boolean | null; checkedAt: string };
   signals: HcSignal[];
 };
 const repo = "jakgunn20-maker/hcbp-hub";
@@ -105,6 +106,45 @@ async function website(): Promise<HcActivity["website"]> {
     return { code: response.status, state: response.status >= 200 && response.status < 400 ? "online" : "error", checkedAt };
   } catch { return { code: null, state: "unavailable", checkedAt }; }
 }
+async function railway(): Promise<HcActivity["railway"]> {
+  const checkedAt = stamp();
+  const base = "https://hcconnect.site";
+  const headers = { "User-Agent": "Control-Room-HC-Healthcheck", Accept: "application/json" };
+  const [readyResult, bridgeResult] = await Promise.allSettled([
+    fetch(base + "/api/ready", { cache: "no-store", headers, signal: AbortSignal.timeout(6500) }),
+    fetch(base + "/api/control-room/bridge-status", { cache: "no-store", headers, signal: AbortSignal.timeout(6500) }),
+  ]);
+  let readyBody: Record<string, unknown> = {};
+  let bridgeBody: Record<string, unknown> = {};
+  let httpCode: number | null = null;
+  let readyHttpOk = false;
+  let bridgeHttpOk = false;
+  if (readyResult.status === "fulfilled") {
+    httpCode = readyResult.value.status;
+    readyHttpOk = readyResult.value.ok;
+    try { readyBody = obj(await readyResult.value.json()); } catch { readyBody = {}; }
+  }
+  if (bridgeResult.status === "fulfilled") {
+    bridgeHttpOk = bridgeResult.value.ok;
+    try { bridgeBody = obj(await bridgeResult.value.json()); } catch { bridgeBody = {}; }
+  }
+  const deps = obj(readyBody.dependencies);
+  const db = str(deps.database);
+  const schema = str(deps.schema);
+  const anyLive = readyResult.status === "fulfilled" || bridgeResult.status === "fulfilled";
+  const ready = readyHttpOk && readyBody.success === true && str(readyBody.status) === "ready";
+  return {
+    source: anyLive ? "live" : "unavailable",
+    httpCode,
+    readyState: ready ? "ready" : anyLive ? "error" : "unavailable",
+    database: db === "ok" ? "ok" : db ? "error" : "unknown",
+    schema: schema === "current" ? "current" : schema ? "outdated" : "unknown",
+    runtime: bridgeHttpOk ? str(bridgeBody.runtime) || "unknown" : "unknown",
+    backendMode: bridgeHttpOk ? str(bridgeBody.backendMode) || "unknown" : "unknown",
+    signerReady: bridgeHttpOk && typeof bridgeBody.signerReady === "boolean" ? bridgeBody.signerReady : null,
+    checkedAt,
+  };
+}
 async function vercel(): Promise<HcActivity["vercel"]> {
   // Runtime logs are NOT available through this deployment endpoint.
   const token = process.env.HC_CONNECT_VERCEL_TOKEN;
@@ -121,8 +161,8 @@ async function vercel(): Promise<HcActivity["vercel"]> {
   } catch { return { source: "unavailable", production: null, failedPreviews: 0 }; }
 }
 export async function loadHcActivity(): Promise<HcActivity> {
-  const [prs, runs, ghIssues, changes, web, vercelResult] = await Promise.all([
-    pullRequests(), workflows(), issues(), commits(), website(), vercel(),
+  const [prs, runs, ghIssues, changes, web, vercelResult, railwayResult] = await Promise.all([
+    pullRequests(), workflows(), issues(), commits(), website(), vercel(), railway(),
   ]);
   const cutoff = Date.now() - 72 * 3600 * 1000;
   const brokenRuns: HcSignal[] = runs.rows.filter(run => ["failure", "timed_out"].includes(run.conclusion) && Date.parse(run.at) >= cutoff).slice(0, 14).map(run => ({
@@ -148,6 +188,7 @@ export async function loadHcActivity(): Promise<HcActivity> {
     github: { prsSource: prs.source, runsSource: runs.source, issuesSource: ghIssues.source, commitsSource: changes.source,
       prs: prs.rows, runs: runs.rows, issuesCount: ghIssues.count, commits: changes.rows },
     vercel: vercelResult,
+    railway: railwayResult,
     signals: [...webAlert, ...brokenRuns, ...ghIssues.rows, ...backlog, ...failedPreview].sort((a,b) => Date.parse(b.at) - Date.parse(a.at)),
   };
 }

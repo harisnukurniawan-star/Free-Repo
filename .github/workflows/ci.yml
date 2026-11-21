@@ -54,7 +54,7 @@ jobs:
           node -e '
             const fs=require("node:fs");
             for (const [file,expected,forbidden,expectedNodes] of [
-              ["/tmp/hc-connect.html","HC Connect","Supabase Tokyo",4],
+              ["/tmp/hc-connect.html","HC Connect","Supabase Tokyo",5],
               ["/tmp/hasnaria-terrace.html","Hasnaria Terrace","OCI HeatWave",5]
             ]) {
               const html=fs.readFileSync(file,"utf8");
