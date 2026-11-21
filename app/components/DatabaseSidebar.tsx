@@ -24,7 +24,7 @@ export default function DatabaseSidebar({ mode, ociConnected = false, ociSnapsho
           aria-expanded={expanded}
           aria-controls="database-subnav"
           onClick={() => setExpanded((current) => !current)}
-        ><span aria-hidden="true">▦</span> Database <span className="nav-caret" aria-hidden="true">{expanded ? "⌄" : "›"}</span></button>
+        ><span aria-hidden="true">▦</span> Applications <span className="nav-caret" aria-hidden="true">{expanded ? "⌄" : "›"}</span></button>
         {expanded && (
           <div id="database-subnav" className="database-subnav">
             <Link href="/database/hc-connect" className={`nav-item subnav-link ${mode === "hc" ? "active" : ""}`} aria-current={mode === "hc" ? "page" : undefined}>
