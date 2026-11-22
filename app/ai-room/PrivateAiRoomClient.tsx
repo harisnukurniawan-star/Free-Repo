@@ -1,6 +1,5 @@
 "use client";
 import {useCallback,useEffect,useMemo,useRef,useState} from "react";
-import Link from "next/link";
 import DatabaseSidebar from "@/app/components/DatabaseSidebar";
 import {WAN_CATALOG,WAN_MODEL_NAMES,isWanModel,type WanModel,type WanDuration,type WanQuality} from "@/lib/wan-models";
 import {estimateWanCostUsd} from "@/lib/ai-room-jobs";
