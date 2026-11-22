@@ -182,26 +182,6 @@ export default function DatabaseSidebar({
 
         {!collapsed && (
           <div className="nexus-nav-section">
-            <span className="nexus-section-label">INFRASTRUCTURE</span>
-          </div>
-        )}
-
-        <Link
-          href="/oci"
-          className={`nav-item nexus-nav-item ${
-            mode === "oci" ? "active" : ""
-          }`}
-          aria-current={mode === "oci" ? "page" : undefined}
-          title={collapsed ? "OCI Infrastructure" : undefined}
-        >
-          <span className="nexus-nav-icon" aria-hidden="true">◉</span>
-          {!collapsed && (
-            <span className="nexus-nav-label">OCI Infrastructure</span>
-          )}
-        </Link>
-
-        {!collapsed && (
-          <div className="nexus-nav-section">
             <span className="nexus-section-label">INTELLIGENCE</span>
           </div>
         )}
