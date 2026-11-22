@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 type Props = {
-  mode: "hc" | "hasnaria" | "oci" | "ai-room";
+  mode: "hc" | "hasnaria" | "oci" | "ai-room" | "ai-vm-oci";
   onUsageClick?: () => void;
   ociConnected?: boolean;
   ociSnapshot?: boolean;
@@ -69,7 +69,9 @@ export default function DatabaseSidebar({
         ? "OCI bridge unverified"
         : mode === "ai-room"
           ? "AI Video Gen"
-          : "Hasnaria Terrace";
+          : mode === "ai-vm-oci"
+            ? "AI VM-OCI"
+            : "Hasnaria Terrace";
 
   const statusDescription =
     mode === "hc"
@@ -80,7 +82,9 @@ export default function DatabaseSidebar({
         ? "Read-only integration pending"
         : mode === "ai-room"
           ? "Video workspace"
-          : "Read-only monitoring";
+          : mode === "ai-vm-oci"
+            ? "OCI operations workspace"
+            : "Read-only monitoring";
 
   return (
     <aside
@@ -210,6 +214,16 @@ export default function DatabaseSidebar({
         >
           <span className="nexus-nav-icon" aria-hidden="true">✦</span>
           {!collapsed && <span className="nexus-nav-label">AI Video Gen</span>}
+        </Link>
+
+        <Link
+          href="/ai-vm-oci"
+          className={`nav-item nexus-nav-item ${mode === "ai-vm-oci" ? "active" : ""}`}
+          aria-current={mode === "ai-vm-oci" ? "page" : undefined}
+          title={collapsed ? "AI VM-OCI" : undefined}
+        >
+          <span className="nexus-nav-icon" aria-hidden="true">⌘</span>
+          {!collapsed && <span className="nexus-nav-label">AI VM-OCI</span>}
         </Link>
 
         <button
