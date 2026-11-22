@@ -68,7 +68,7 @@ export default function DatabaseSidebar({
       : mode === "oci"
         ? "OCI bridge unverified"
         : mode === "ai-room"
-          ? "AI ROOM"
+          ? "AI Video Gen"
           : "Hasnaria Terrace";
 
   const statusDescription =
@@ -206,10 +206,10 @@ export default function DatabaseSidebar({
           href="/ai-room"
           className={`nav-item nexus-nav-item ${mode === "ai-room" ? "active" : ""}`}
           aria-current={mode === "ai-room" ? "page" : undefined}
-          title={collapsed ? "AI ROOM" : undefined}
+          title={collapsed ? "AI Video Gen" : undefined}
         >
           <span className="nexus-nav-icon" aria-hidden="true">✦</span>
-          {!collapsed && <span className="nexus-nav-label">AI ROOM</span>}
+          {!collapsed && <span className="nexus-nav-label">AI Video Gen</span>}
         </Link>
 
         <button
