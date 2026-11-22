@@ -151,3 +151,96 @@
   .vmoci-pagination { margin-top: 3px; font-size: 7px; }
   .vmoci-pagination button { padding: 3px 5px; font-size: 7px; }
 }
+
+
+/* Final AI VM-OCI viewport contract: override shared .workspace defaults. */
+@media (min-width: 1100px) and (min-height: 700px) {
+  html:has(.ai-vm-oci-route), body:has(.ai-vm-oci-route) {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .control-room.ai-vm-oci-route {
+    height: 100dvh;
+    min-height: 0;
+    max-height: 100dvh;
+    overflow: hidden;
+    grid-template-rows: minmax(0, 1fr);
+    align-items: stretch;
+  }
+  .control-room.ai-vm-oci-route > .ai-vm-oci-workspace {
+    height: 100dvh;
+    min-height: 0;
+    max-height: 100dvh;
+    overflow: hidden;
+    padding: 8px 16px !important;
+    box-sizing: border-box;
+    align-self: stretch;
+  }
+  .control-room.ai-vm-oci-route > .ai-vm-oci-workspace > .vmoci-main {
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow: hidden;
+  }
+  .ai-vm-oci-route .vmoci-header,
+  .ai-vm-oci-route .vmoci-notice,
+  .ai-vm-oci-route .vmoci-tabs,
+  .ai-vm-oci-route .vmoci-kpis {
+    flex: 0 0 auto;
+    min-height: 0;
+  }
+  .ai-vm-oci-route .vmoci-header { margin: 0; }
+  .ai-vm-oci-route .vmoci-header h1 { font-size: 18px; line-height: 1.05; margin: 3px 0 2px; }
+  .ai-vm-oci-route .vmoci-header p { font-size: 9px; }
+  .ai-vm-oci-route .vmoci-eyebrow { font-size: 7px; }
+  .ai-vm-oci-route .vmoci-notice { margin: 0; padding: 5px 8px; font-size: 8px; line-height: 1.25; }
+  .ai-vm-oci-route .vmoci-tabs { margin: 0; gap: 5px; }
+  .ai-vm-oci-route .vmoci-tabs button { padding: 5px 7px; gap: 1px; }
+  .ai-vm-oci-route .vmoci-tabs button span { font-size: 9px; }
+  .ai-vm-oci-route .vmoci-tabs button small { font-size: 7px; }
+  .ai-vm-oci-route .vmoci-kpis { margin: 0; gap: 6px; }
+  .ai-vm-oci-route .vmoci-kpis article { padding: 7px 9px; gap: 3px; }
+  .ai-vm-oci-route .vmoci-kpis article span { font-size: 7px; }
+  .ai-vm-oci-route .vmoci-kpis article strong { font-size: 17px; }
+  .ai-vm-oci-route .vmoci-kpis article small { font-size: 8px; }
+  .ai-vm-oci-route .vmoci-grid {
+    flex: 1 1 0;
+    min-height: 0;
+    max-height: none;
+    margin: 0;
+    gap: 6px;
+    grid-template-columns: minmax(0, 1.15fr) minmax(230px, .85fr);
+  }
+  .ai-vm-oci-route .vmoci-panel { min-height: 0; padding: 8px 10px; }
+  .ai-vm-oci-route .vmoci-panel-head { margin-bottom: 4px; }
+  .ai-vm-oci-route .vmoci-panel-head h2,
+  .ai-vm-oci-route .vmoci-operator h2 { font-size: 11px; }
+  .ai-vm-oci-route .vmoci-health-row { padding: 4px 0; font-size: 8px; }
+  .ai-vm-oci-route .vmoci-health-row b { font-size: 7px; }
+  .ai-vm-oci-route .vmoci-operator p { font-size: 8px; line-height: 1.3; margin: 4px 0; }
+  .ai-vm-oci-route .vmoci-policy { padding: 3px 0; font-size: 8px; }
+  .ai-vm-oci-route .vmoci-resource-panel {
+    flex: 0 0 auto;
+    min-height: 0;
+    max-height: 142px;
+    overflow: hidden;
+    margin: 0;
+    padding: 6px 9px;
+  }
+  .ai-vm-oci-route .vmoci-resource-panel .vmoci-panel-head { margin: 0 0 2px; }
+  .ai-vm-oci-route .vmoci-resource-panel .vmoci-panel-head h2 { font-size: 10px; }
+  .ai-vm-oci-route .vmoci-table-tools { margin: 0 0 2px; font-size: 7px; }
+  .ai-vm-oci-route .vmoci-table-tools input { padding: 3px 5px; font-size: 7px; }
+  .ai-vm-oci-route .vmoci-table-wrap { overflow: hidden; }
+  .ai-vm-oci-route .vmoci-table-wrap table { min-width: 0; table-layout: fixed; font-size: 7px; }
+  .ai-vm-oci-route .vmoci-table-wrap th,
+  .ai-vm-oci-route .vmoci-table-wrap td { padding: 3px 5px; font-size: 7px; }
+  .ai-vm-oci-route .vmoci-state { padding: 2px 4px; font-size: 6px; }
+  .ai-vm-oci-route .vmoci-link { font-size: 7px; }
+  .ai-vm-oci-route .vmoci-pagination { margin-top: 2px; font-size: 6px; }
+  .ai-vm-oci-route .vmoci-pagination button { padding: 2px 4px; font-size: 6px; }
+}
