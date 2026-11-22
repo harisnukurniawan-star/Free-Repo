@@ -1151,3 +1151,63 @@ a.nav-item{text-decoration:none}
 .nexus-brand{width:100%;min-width:0}
 .nexus-brand-link{flex:1;min-width:0;overflow:visible}
 .nexus-sidebar-header{min-width:0}
+
+
+/* NEXUS layout contract — apply to every route/tab using the shared sidebar.
+   The grid track must equal the sidebar's actual width (264px), otherwise
+   the sidebar overflows its 230px legacy track and covers the first content column. */
+.control-room:has(> .nexus-sidebar) {
+  display: grid;
+  grid-template-columns: 264px minmax(0, 1fr);
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  min-height: 100dvh;
+}
+.control-room:has(> .nexus-sidebar.is-collapsed) {
+  grid-template-columns: 76px minmax(0, 1fr);
+}
+.control-room:has(> .nexus-sidebar) > .nexus-sidebar {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  width: 264px;
+  min-width: 264px;
+  height: 100dvh;
+  min-height: 100dvh;
+  max-height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.control-room:has(> .nexus-sidebar.is-collapsed) > .nexus-sidebar {
+  width: 76px;
+  min-width: 76px;
+}
+.control-room:has(> .nexus-sidebar) > .workspace {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  align-self: stretch;
+  box-sizing: border-box;
+}
+@media (max-width: 760px) {
+  .control-room:has(> .nexus-sidebar) {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+  .control-room:has(> .nexus-sidebar:not(.is-collapsed)) {
+    grid-template-columns: 240px minmax(0, 1fr);
+  }
+  .control-room:has(> .nexus-sidebar) > .nexus-sidebar {
+    width: 76px;
+    min-width: 76px;
+  }
+  .control-room:has(> .nexus-sidebar:not(.is-collapsed)) > .nexus-sidebar {
+    width: 240px;
+    min-width: 240px;
+  }
+  .control-room:has(> .nexus-sidebar) > .workspace {
+    min-width: 0;
+    overflow-x: hidden;
+  }
+}
