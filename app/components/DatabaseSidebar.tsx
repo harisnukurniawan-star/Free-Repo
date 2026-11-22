@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useState } from "react";
 
 type Props = {
-  mode: "hc" | "hasnaria" | "oci";
+  mode: "hc" | "hasnaria" | "oci" | "ai-room";
+  onUsageClick?: () => void;
   ociConnected?: boolean;
   ociSnapshot?: boolean;
 };
@@ -54,8 +55,9 @@ export default function DatabaseSidebar({
   mode,
   ociConnected = false,
   ociSnapshot = false,
+  onUsageClick,
 }: Props) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
   const statusTitle =
@@ -65,7 +67,9 @@ export default function DatabaseSidebar({
         : "OCI unavailable"
       : mode === "oci"
         ? "OCI bridge unverified"
-        : "Hasnaria Terrace";
+        : mode === "ai-room"
+          ? "AI ROOM"
+          : "Hasnaria Terrace";
 
   const statusDescription =
     mode === "hc"
@@ -74,7 +78,9 @@ export default function DatabaseSidebar({
         : "Direct metadata"
       : mode === "oci"
         ? "Read-only integration pending"
-        : "Read-only monitoring";
+        : mode === "ai-room"
+          ? "Video workspace"
+          : "Read-only monitoring";
 
   return (
     <aside
@@ -198,7 +204,8 @@ export default function DatabaseSidebar({
 
         <Link
           href="/ai-room"
-          className="nav-item nexus-nav-item"
+          className={`nav-item nexus-nav-item ${mode === "ai-room" ? "active" : ""}`}
+          aria-current={mode === "ai-room" ? "page" : undefined}
           title={collapsed ? "AI ROOM" : undefined}
         >
           <span className="nexus-nav-icon" aria-hidden="true">✦</span>
@@ -207,8 +214,9 @@ export default function DatabaseSidebar({
 
         <button
           type="button"
-          className="nav-item nexus-nav-item disabled"
-          disabled
+          className={`nav-item nexus-nav-item ${onUsageClick ? "" : "disabled"}`}
+          disabled={!onUsageClick}
+          onClick={onUsageClick}
           title={collapsed ? "Usage & Cost — Soon" : undefined}
         >
           <span className="nexus-nav-icon" aria-hidden="true">◌</span>

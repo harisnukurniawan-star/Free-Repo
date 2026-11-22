@@ -1,10 +1,10 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { createVideoJobPoller } from "@/lib/ai-room-polling";
 import { WAN_CATALOG, WAN_MODEL_NAMES, isWanModel, type WanModel, type WanDuration, type WanQuality } from "@/lib/wan-models";
 import { estimateWanCostUsd, formatElapsed, normalizeStoredJob, type StoredAiRoomJob } from "@/lib/ai-room-jobs";
 import UsageCostView from "./UsageCostView";
+import DatabaseSidebar from "@/app/components/DatabaseSidebar";
 import {aspectValue, frameReferenceImage, matchesAspect, type AiRoomAspect} from "@/lib/ai-room-framing";
 import type {AiRoomContentMode} from "@/lib/ai-room-content-policy";
 
@@ -229,24 +229,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
   }
 
   return <main className="control-room ai-room-route">
-    <aside className="sidebar">
-      <div className="brand">
-        <div className="brand-mark">C</div>
-        <div><strong>CONTROL ROOM</strong><span>Operations Console</span></div>
-      </div>
-      <nav>
-        <Link className="nav-item" href="/database"><span>▦</span> Database</Link>
-        <Link className="nav-item active" href="/ai-room"><span>✦</span> AI ROOM</Link>
-        <button className={`nav-item ${view==="usage"?"active":""}`} onClick={()=>setView("usage")}><span>◌</span> Usage & Cost</button>
-      </nav>
-      <div className="side-foot">
-        <span className={`status-dot ${providerState.realGeneration?"online":"offline"}`} />
-        <div>
-          <strong>{providerState.generationLocked?"Generation locked":providerState.realGeneration?"Wan engine ready":"Video engine unavailable"}</strong>
-          <small>{providerState.generationLocked?"Access key setup required":providerState.realGeneration?"fal.ai connected":"Check provider configuration"}</small>
-        </div>
-      </div>
-    </aside>
+    <DatabaseSidebar mode="ai-room" onUsageClick={()=>setView("usage")} />
 
     <section className="workspace ai-room-workspace">
       <div className="ai-main">

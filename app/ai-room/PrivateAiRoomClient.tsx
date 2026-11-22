@@ -1,6 +1,6 @@
 "use client";
 import {useCallback,useEffect,useMemo,useRef,useState} from "react";
-import Link from "next/link";
+import DatabaseSidebar from "@/app/components/DatabaseSidebar";
 import {WAN_CATALOG,WAN_MODEL_NAMES,isWanModel,type WanModel,type WanDuration,type WanQuality} from "@/lib/wan-models";
 import {estimateWanCostUsd} from "@/lib/ai-room-jobs";
 import {aspectValue,frameReferenceImage,type AiRoomAspect} from "@/lib/ai-room-framing";
@@ -304,13 +304,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
   const visible=view==="gallery"?completed:view==="history"?history:recent;
   const title=view==="generate"?"Create a private video":view==="gallery"?"Private Gallery":view==="history"?"Video History":"Usage & Cost";
   return <main className="control-room ai-room-route">
-    <aside className="sidebar">
-      <div className="brand"><div className="brand-mark">C</div><div><strong>CONTROL ROOM</strong><span>Operations Console</span></div></div>
-      <nav><Link className="nav-item" href="/database"><span>▦</span> Database</Link>
-        <Link className="nav-item active" href="/ai-room"><span>✦</span> AI ROOM</Link></nav>
-      <div className="side-foot"><span className={"status-dot "+(ready?"online":"offline")}/>
-        <div><strong>Private OCI Storage</strong><small>Batam · Owner-only access</small></div></div>
-    </aside>
+    <DatabaseSidebar mode="ai-room" />
     <section className="workspace ai-room-workspace"><div className="ai-main">
       <header><div><span className="kicker">AI VIDEO GENERATOR · PRIVATE MODE</span><h1>{title}</h1><p>Videos are kept in your private OCI bucket until you delete them.</p></div>
         <div className="badge">{ready?"OCI PRIVATE":"SETUP REQUIRED"}</div></header>
