@@ -111,3 +111,43 @@
 @media (min-width: 1100px) and (max-height: 699px) {
   .ai-vm-oci-workspace { padding-top: 10px; padding-bottom: 10px; }
 }
+
+/* Extra compact desktop density for 1366x768 @100% */
+@media (min-width: 1100px) and (min-height: 700px) {
+  .ai-vm-oci-workspace { padding: 8px 16px 8px; }
+  .vmoci-main { gap: 6px; }
+  .vmoci-header h1 { font-size: 18px; line-height: 1.05; }
+  .vmoci-header p { font-size: 9px; }
+  .vmoci-eyebrow { font-size: 7px; letter-spacing: .09em; }
+  .vmoci-header-status { padding: 4px 7px; font-size: 7px; }
+  .vmoci-notice { padding: 5px 8px; font-size: 8px; line-height: 1.25; }
+  .vmoci-notice strong { font-size: 7px; }
+  .vmoci-tabs { gap: 5px; }
+  .vmoci-tabs button { padding: 5px 7px; gap: 1px; border-radius: 7px; }
+  .vmoci-tabs button span { font-size: 9px; }
+  .vmoci-tabs button small { font-size: 7px; }
+  .vmoci-kpis { gap: 6px; }
+  .vmoci-kpis article { padding: 7px 9px; gap: 3px; border-radius: 8px; }
+  .vmoci-kpis article span { font-size: 7px; letter-spacing: .07em; }
+  .vmoci-kpis article strong { font-size: 17px; }
+  .vmoci-kpis article small { font-size: 8px; line-height: 1.15; }
+  .vmoci-grid { grid-template-columns: minmax(0,1.15fr) minmax(230px,.85fr); gap: 6px; }
+  .vmoci-panel { padding: 8px 10px; border-radius: 8px; }
+  .vmoci-panel-head { margin-bottom: 5px; }
+  .vmoci-panel-head h2,.vmoci-operator h2 { font-size: 11px; }
+  .vmoci-tag { padding: 4px 6px; font-size: 7px; }
+  .vmoci-health-row { padding: 5px 0; font-size: 8px; }
+  .vmoci-health-row b { font-size: 8px; }
+  .vmoci-operator p { font-size: 8px; line-height: 1.35; margin: 4px 0 5px; }
+  .vmoci-policy { padding: 4px 0; font-size: 8px; }
+  .vmoci-resource-panel .vmoci-panel-head { margin-bottom: 3px; }
+  .vmoci-table-tools { margin-bottom: 3px; font-size: 8px; }
+  .vmoci-table-tools input { width: 190px; padding: 4px 6px; font-size: 8px; }
+  .vmoci-table-wrap table { font-size: 8px; }
+  .vmoci-table-wrap th { padding: 4px 6px; font-size: 7px; }
+  .vmoci-table-wrap td { padding: 4px 6px; }
+  .vmoci-state { padding: 3px 5px; font-size: 7px; }
+  .vmoci-link { font-size: 8px; }
+  .vmoci-pagination { margin-top: 3px; font-size: 7px; }
+  .vmoci-pagination button { padding: 3px 5px; font-size: 7px; }
+}
