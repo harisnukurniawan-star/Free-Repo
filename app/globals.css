@@ -297,7 +297,7 @@ a.nav-item{text-decoration:none}
 .terrace-zoom-label{display:none;border:1px solid #c7d2fe;background:#eef2ff;color:#3730a3;border-radius:9px;padding:9px 10px;font-size:10px;font-weight:700;white-space:nowrap}
 
 @media(min-width:1024px) and (min-height:700px){
-  .control-room.terrace-one-view{grid-template-columns:230px minmax(0,1fr);height:100dvh;min-height:0;overflow:hidden}
+  .control-room.terrace-one-view{grid-template-columns:264px minmax(0,1fr);height:100dvh;min-height:0;overflow:hidden}
   .terrace-one-view .sidebar{height:100dvh;min-height:0}
   .control-room.terrace-one-view>.terrace-workspace{
     height:100dvh;min-height:0;overflow:hidden;
@@ -1123,4 +1123,23 @@ a.nav-item{text-decoration:none}
   .nexus-sidebar * {
     transition: none !important;
   }
+}
+
+
+/* NEXUS One View alignment: sidebar width and grid track must always match. */
+.nexus-brand-mark{display:block;width:224px;height:52px;max-width:100%;overflow:visible}
+.nexus-brand.is-compact .nexus-brand-mark{width:48px;height:42px}
+@media(min-width:1024px) and (min-height:700px){
+  .control-room.terrace-one-view:has(>.nexus-sidebar){grid-template-columns:264px minmax(0,1fr)}
+  .control-room.terrace-one-view:has(>.nexus-sidebar.is-collapsed){grid-template-columns:76px minmax(0,1fr)}
+  .control-room.terrace-one-view>.nexus-sidebar{width:264px;min-width:264px;height:100dvh;min-height:0;overflow-y:auto;overflow-x:hidden}
+  .control-room.terrace-one-view>.nexus-sidebar.is-collapsed{width:76px;min-width:76px}
+  .control-room.terrace-one-view>.terrace-workspace{min-width:0;width:100%;height:100dvh;min-height:0;overflow:hidden}
+  .hc-ops-mode .hc-ops-visual-slot{min-height:0;overflow:hidden}
+  .hc-ops-mode .live-arch{min-height:0;overflow:hidden}
+  .hc-ops-mode .hc-ops-alert-body{min-height:0;overflow:hidden}
+}
+@media(max-width:1023px),(max-height:699px){
+  .nexus-brand-mark{width:190px;height:48px}
+  .nexus-sidebar{overflow-y:auto}
 }
