@@ -12,7 +12,7 @@ type Props = {
 function NexusBrand({ compact = false }: { compact?: boolean }) {
   return (
     <div className={`nexus-brand ${compact ? "is-compact" : ""}`} aria-label="NEXUS Control Room">
-      <svg className="nexus-brand-mark" viewBox={compact ? "0 0 58 48" : "0 0 252 58"} role="img" aria-hidden="true">
+      <svg className="nexus-brand-mark" viewBox={compact ? "0 0 70 48" : "0 0 252 58"} role="img" aria-hidden="true">
         <defs>
           <linearGradient id="nexus-metal" x1="0" y1="0" x2="1" y2="1">
             <stop offset="0" stopColor="#FFFFFF" />
