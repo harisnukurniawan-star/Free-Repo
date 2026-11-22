@@ -17,7 +17,7 @@ jobs:
       - run: bash -n scripts/oci-private-bucket-prepare.sh scripts/oci-production-bucket-prepare.sh && node --check scripts/verify-oci-storage.mjs && node --check scripts/verify-oci-native.mjs
       - run: npm test
       - run: npx eslint app/ai-room app/api/ai-room lib/ai-room-access.ts lib/ai-room-content-policy.ts lib/ai-room-jobs.ts lib/ai-room-private-auth.ts lib/ai-room-private-storage.ts lib/ai-room-native-objects.ts lib/ai-room-native-bridge.ts lib/ai-room-oci-safe-logger.ts lib/video-engine.ts lib/wan-models.ts tests/ai-room-mature-mode.test.ts tests/ai-room-private-security.test.ts tests/ai-room-oci-native.test.ts tests/ai-room-oci-probe.test.ts app/api/ai-room/videos
-      - run: npx eslint app/database/DatabaseDashboard.tsx app/components/DatabaseSidebar.tsx app/database/hasnaria-terrace lib/hasnaria-monitoring.ts lib/hasnaria-activity.ts tests/hasnaria-terrace.test.ts tests/hasnaria-activity.test.ts app/database/hc-connect/HcOperationsOverview.tsx lib/hc-connect-activity.ts tests/hc-connect-activity.test.ts app/components/ArchitectureLiveStatus.tsx tests/architecture-live-status.test.ts
+      - run: npx eslint app/database/DatabaseDashboard.tsx app/components/DatabaseSidebar.tsx app/database/hasnaria-terrace lib/hasnaria-monitoring.ts lib/hasnaria-activity.ts tests/hasnaria-terrace.test.ts tests/hasnaria-activity.test.ts app/database/hc-connect/HcOperationsOverview.tsx lib/hc-connect-activity.ts tests/hc-connect-activity.test.ts app/components/ArchitectureLiveStatus.tsx tests/architecture-live-status.test.ts app/oci/page.tsx
       - run: npm run build
       - name: Smoke test database routes and preserved OCI API
         run: |
@@ -73,3 +73,13 @@ jobs:
           grep -q '"tables"' /tmp/oci-schema.json
           curl -sS --fail --max-time 10 http://127.0.0.1:3000/api/database/health -o /tmp/oci-health.json
           grep -q '"metrics"' /tmp/oci-health.json
+          grep -q 'Usage &amp; Cost' /tmp/hc-connect.html
+          curl -sS --fail --max-time 30 http://127.0.0.1:3000/oci -o /tmp/oci.html
+          for label in "OCI Infrastructure" "Compute / VM" "Database / HeatWave" "Bastion / Security" "Functions" "Object Storage" "Networking" "Health / Monitoring" "OCI Usage and Cost" "GitHub OCI Controller" "Railway OCI MCP Gateway" "HC Connect Bastion API"
+          do
+            grep -Fq "$label" /tmp/oci.html
+          done
+          curl -sS --fail --max-time 30 http://127.0.0.1:3000/ai-room -o /tmp/ai-room.html
+          grep -q 'AI ROOM' /tmp/ai-room.html
+          curl -sS --fail --max-time 10 http://127.0.0.1:3000/api/ai-room/health -o /tmp/ai-room-health.json
+          grep -q '"application":"ai-room"' /tmp/ai-room-health.json

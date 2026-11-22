@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 type Props = {
-  mode: "hc" | "hasnaria";
+  mode: "hc" | "hasnaria" | "oci";
   ociConnected?: boolean;
   ociSnapshot?: boolean;
 };
@@ -20,7 +20,7 @@ export default function DatabaseSidebar({ mode, ociConnected = false, ociSnapsho
       <nav aria-label="Control Room navigation">
         <button
           type="button"
-          className="nav-item database-parent active"
+          className={`nav-item database-parent ${mode === "hc" || mode === "hasnaria" ? "active" : ""}`}
           aria-expanded={expanded}
           aria-controls="database-subnav"
           onClick={() => setExpanded((current) => !current)}
@@ -35,14 +35,15 @@ export default function DatabaseSidebar({ mode, ociConnected = false, ociSnapsho
             </Link>
           </div>
         )}
+        <Link href="/oci" className={`nav-item ${mode === "oci" ? "active" : ""}`} aria-current={mode === "oci" ? "page" : undefined}><span aria-hidden="true">◉</span> OCI Infrastructure</Link>
         <Link href="/ai-room" className="nav-item"><span aria-hidden="true">✦</span> AI ROOM</Link>
         <button type="button" className="nav-item disabled" disabled><span aria-hidden="true">◌</span> Usage & Cost <small>Soon</small></button>
       </nav>
       <div className="side-foot">
-        <span className={`status-dot ${mode === "hc" ? (ociConnected ? "online" : "offline") : "neutral"}`} />
+        <span className={`status-dot ${mode === "hc" ? (ociConnected ? "online" : "offline") : mode === "oci" ? "offline" : "neutral"}`} />
         <div>
-          <strong>{mode === "hc" ? (ociConnected ? "OCI metadata ready" : "OCI unavailable") : "Hasnaria Terrace"}</strong>
-          <small>{mode === "hc" ? (ociSnapshot ? "Private snapshot" : "Direct metadata") : "Read-only monitoring"}</small>
+          <strong>{mode === "hc" ? (ociConnected ? "OCI metadata ready" : "OCI unavailable") : mode === "oci" ? "OCI bridge unverified" : "Hasnaria Terrace"}</strong>
+          <small>{mode === "hc" ? (ociSnapshot ? "Private snapshot" : "Direct metadata") : mode === "oci" ? "Read-only integration pending" : "Read-only monitoring"}</small>
         </div>
       </div>
     </aside>
