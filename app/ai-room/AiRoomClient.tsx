@@ -108,7 +108,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
     if(!(WAN_CATALOG[next].qualities as readonly string[]).includes(quality))setQuality("720p");
   }
   const viewTitle=view==="generate"?"Create a video":view==="gallery"?"Gallery":view==="history"?"History":"Usage & Cost";
-  const viewSubtitle=view==="generate"?"Describe the scene. AI ROOM handles the generation workflow.":view==="gallery"?"Completed generations in one place.":view==="history"?"Recent generation activity and job status.":"Estimated generation spend and usage history for this browser.";
+  const viewSubtitle=view==="generate"?"Describe the scene. AI Video Gen handles the generation workflow.":view==="gallery"?"Completed generations in one place.":view==="history"?"Recent generation activity and job status.":"Estimated generation spend and usage history for this browser.";
 
   function onReferenceImage(file?:File){
     const readId=++referenceReadId.current;
@@ -265,7 +265,7 @@ export default function AiRoomClient({initialProviderState}:{initialProviderStat
             </div>
             {!providerState.realGeneration&&providerState.checked&&<div className="info-banner">Preview mode — connect the fal.ai provider to enable real video generation.</div>}
             {providerState.generationLocked&&<div className="info-banner" role="status">Paid generation is locked until the server administrator configures AI_ROOM_GENERATE_ACCESS_KEY (minimum 16 characters). No fal.ai credit can be charged while locked.</div>}
-            {providerState.generationAuthRequired&&!providerState.generationLocked&&<label className="field ai-access-key"><span>Generation access key</span><input type="password" value={accessKey} autoComplete="off" placeholder="Enter your AI ROOM access key" onChange={e=>{const key=e.target.value;setAccessKey(key);try{sessionStorage.setItem("ai-room-generation-key",key)}catch{}}}/><small>Kept only in this browser tab session. Required to authorize paid generation.</small></label>}
+            {providerState.generationAuthRequired&&!providerState.generationLocked&&<label className="field ai-access-key"><span>Generation access key</span><input type="password" value={accessKey} autoComplete="off" placeholder="Enter your AI Video Gen access key" onChange={e=>{const key=e.target.value;setAccessKey(key);try{sessionStorage.setItem("ai-room-generation-key",key)}catch{}}}/><small>Kept only in this browser tab session. Required to authorize paid generation.</small></label>}
             {error&&<div className="error-banner">{error}</div>}
             <div className="generate-row"><div><small>Est. fal.ai charge · {duration} · {quality}</small><strong>{estimate===null?"Unavailable":`~${estimate.toFixed(2)} USD`}</strong><small>Estimated only · charged from existing fal.ai credit when submitted, not a live balance. <a href="https://fal.ai/dashboard/billing" target="_blank" rel="noopener noreferrer">Check actual balance at fal.ai ↗</a></small></div><button className="generate" disabled={!canGenerate||submitting} onClick={generate}>{submitting?"Submitting…":"Generate video ✦"}</button></div>
           </section>
