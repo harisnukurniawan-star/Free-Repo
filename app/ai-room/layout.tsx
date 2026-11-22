@@ -2,8 +2,8 @@ import type {Metadata} from "next";
 import "./ai-room.css";
 
 export const metadata:Metadata={
-  title:"AI ROOM | Control Room",
-  description:"AI video generation inside Control Room"
+  title:"AI Video Gen | Control Room",
+  description:"AI Video Gen inside Control Room"
 };
 
 export default function AiRoomLayout({children}:{children:React.ReactNode}){
