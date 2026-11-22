@@ -63,12 +63,25 @@ export default function AiVmOciClient() {
 
           {active === "overview" ? (
             <>
+              <div className="vmoci-snapshot-meta"><span>LAST VERIFIED REPORT</span><strong>22 Nov 2026 · 06:30 WIB</strong><small>GitHub Issue #59 / #60 · snapshot, not live feed</small></div>
               <div className="vmoci-kpis">
-                <article><span>COMPUTE</span><strong>—</strong><small>Live inventory not connected</small></article>
-                <article><span>NETWORK</span><strong>—</strong><small>Live inventory not connected</small></article>
-                <article><span>FUNCTIONS</span><strong>—</strong><small>Invocation metrics unavailable</small></article>
-                <article><span>STORAGE & DB</span><strong>—</strong><small>Health checks unavailable</small></article>
+                <article><span>COMPUTE</span><strong>0 found</strong><small>2 accessible scopes checked · no VM record</small></article>
+                <article><span>NETWORK</span><strong>2 available</strong><small>Controller VCN and subnet metadata</small></article>
+                <article><span>FUNCTIONS</span><strong>3 / 3 ACTIVE</strong><small>Lifecycle only · invocation metrics NO DATA</small></article>
+                <article><span>STORAGE</span><strong>2 private</strong><small>Bucket access metadata · objects not read</small></article>
               </div>
+              <section className="vmoci-panel vmoci-evidence-panel">
+                <div className="vmoci-panel-head"><div><span className="vmoci-eyebrow">EVIDENCE SNAPSHOT</span><h2>Latest OCI read-only observations</h2></div><span className="vmoci-tag amber">PARTIAL / HISTORICAL</span></div>
+                <div className="vmoci-evidence-grid">
+                  <article><b>Compute</b><strong>NOT FOUND IN ENUMERATED SCOPES</strong><small>2 accessible compartments fully listed; 0 compute records examined</small></article>
+                  <article><b>Network</b><strong>VCN + subnet AVAILABLE</strong><small>No broad SSH rule in inspected security lists; NSGs not inspected</small></article>
+                  <article><b>Functions</b><strong>3 / 3 ACTIVE</strong><small>Invocation, errors, and duration metrics: NO DATA, not zero</small></article>
+                  <article><b>Storage</b><strong>2 buckets PRIVATE</strong><small>ObjectCount: 2 and 22 · StoredBytes: 280 and 77,675,116</small></article>
+                  <article><b>Logging</b><strong>HTTP 404 · UNVERIFIED</strong><small>NotAuthorizedOrNotFound; cause not proven</small></article>
+                  <article><b>Gateway</b><strong>RAILWAY MCP SLEEPING</strong><small>Not a working live dashboard data feed</small></article>
+                </div>
+                <div className="vmoci-evidence-footer">Sources: <a href="https://github.com/harisnukurniawan-star/oci-vm-retry/issues/59" target="_blank" rel="noreferrer">OCI REMOTE #59</a> · <a href="https://github.com/harisnukurniawan-star/oci-vm-retry/issues/60" target="_blank" rel="noreferrer">OCI DIAG #60</a>. Reports were generated 21 Nov 2026 at 23:25 and 23:30 UTC. Values are not refreshed automatically.</div>
+              </section>
               <div className="vmoci-grid">
                 <section className="vmoci-panel vmoci-health">
                   <div className="vmoci-panel-head"><div><span className="vmoci-eyebrow">SERVICE STATUS</span><h2>Infrastructure health</h2></div><span className="vmoci-tag amber">NOT VERIFIED</span></div>
