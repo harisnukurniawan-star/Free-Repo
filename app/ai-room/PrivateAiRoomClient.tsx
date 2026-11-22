@@ -19,7 +19,7 @@ async function asJson(response:Response):Promise<Record<string,unknown>>{
   const data:unknown=await response.json().catch(()=>({}));
   if(!data||typeof data!=="object"||Array.isArray(data))throw new Error("Unexpected server response");
   const obj=data as Record<string,unknown>;
-  if(!response.ok)throw new Error(typeof obj.error==="string"?obj.error:"AI ROOM request failed");
+  if(!response.ok)throw new Error(typeof obj.error==="string"?obj.error:"AI Video Gen request failed");
   return obj;
 }
 
@@ -311,7 +311,7 @@ export default function PrivateAiRoomClient({ready}:{ready:boolean}){
       {!ready&&<div className="error-banner" role="alert">Private OCI mode is not configured. Generation is safely disabled. Ask the operator to configure the private bucket and per-user credentials.</div>}
       {error&&<div className="error-banner" role="alert">{error}<button onClick={()=>setError("")}> × </button></div>}
       {checking?<div className="card">Checking private session…</div>:!user?
-        <section className="card composer"><h2>Sign in to AI ROOM</h2>
+        <section className="card composer"><h2>Sign in to AI Video Gen</h2>
           <p>Private videos are available only in their own account.</p>
           <label className="field"><span>Username</span><input value={loginName} autoComplete="username" onChange={e=>setLoginName(e.target.value)}/></label>
           <label className="field"><span>Password</span><input type="password" value={password} autoComplete="current-password" onChange={e=>setPassword(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")void login();}}/></label>
