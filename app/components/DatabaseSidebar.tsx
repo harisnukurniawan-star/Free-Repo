@@ -11,17 +11,32 @@ type Props = {
 
 function NexusBrand({ compact = false }: { compact?: boolean }) {
   return (
-    <div className={`nexus-brand ${compact ? "is-compact" : ""}`}>
-      <div className="nexus-brand-symbol" aria-hidden="true">
-        <span />
-        <span />
-      </div>
-      {!compact && (
-        <div className="nexus-brand-copy">
-          <strong>NEXUS</strong>
-          <span>CONTROL ROOM</span>
-        </div>
-      )}
+    <div className={`nexus-brand ${compact ? "is-compact" : ""}`} aria-label="NEXUS Control Room">
+      <svg className="nexus-brand-mark" viewBox={compact ? "0 0 58 48" : "0 0 252 58"} role="img" aria-hidden="true">
+        <defs>
+          <linearGradient id="nexus-metal" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#FFFFFF" />
+            <stop offset=".48" stopColor="#AEBBD0" />
+            <stop offset="1" stopColor="#F7FAFF" />
+          </linearGradient>
+          <linearGradient id="nexus-energy" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stopColor="#19D5D2" />
+            <stop offset=".52" stopColor="#398BFF" />
+            <stop offset="1" stopColor="#7658F5" />
+          </linearGradient>
+          <filter id="nexus-glow" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="2.2" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
+        <path d="M8 17 Q29 -2 54 12" fill="none" stroke="url(#nexus-energy)" strokeWidth="2.4" strokeLinecap="round" filter="url(#nexus-glow)" />
+        <path d="M12 22 L29 39 L46 22 M28 22 L45 39 L62 22" fill="none" stroke="url(#nexus-energy)" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+        {!compact && <>
+          <text x="72" y="34" fill="url(#nexus-metal)" fontSize="29" fontWeight="800" fontStyle="italic" letterSpacing="3">NEXUS</text>
+          <path d="M73 43 H239" stroke="url(#nexus-energy)" strokeWidth="1.8" strokeLinecap="round" />
+          <text x="74" y="54" fill="#91A1C1" fontSize="7.5" fontWeight="700" letterSpacing="2.5">CONTROL ROOM</text>
+        </>}
+      </svg>
     </div>
   );
 }
