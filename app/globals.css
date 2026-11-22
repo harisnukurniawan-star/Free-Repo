@@ -1143,3 +1143,11 @@ a.nav-item{text-decoration:none}
   .nexus-brand-mark{width:190px;height:48px}
   .nexus-sidebar{overflow-y:auto}
 }
+
+
+/* NEXUS reference wordmark proportions */
+.nexus-brand-mark{display:block;width:232px;height:64px;max-width:100%;overflow:visible}
+.nexus-brand.is-compact .nexus-brand-mark{width:48px;height:42px}
+.nexus-brand{width:100%;min-width:0}
+.nexus-brand-link{flex:1;min-width:0;overflow:visible}
+.nexus-sidebar-header{min-width:0}
