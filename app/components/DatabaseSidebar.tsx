@@ -12,30 +12,39 @@ type Props = {
 function NexusBrand({ compact = false }: { compact?: boolean }) {
   return (
     <div className={`nexus-brand ${compact ? "is-compact" : ""}`} aria-label="NEXUS Control Room">
-      <svg className="nexus-brand-mark" viewBox={compact ? "0 0 70 48" : "0 0 252 58"} role="img" aria-hidden="true">
+      <svg className="nexus-brand-mark" viewBox={compact ? "0 0 76 68" : "0 0 340 92"} role="img" aria-label="NEXUS">
         <defs>
-          <linearGradient id="nexus-metal" x1="0" y1="0" x2="1" y2="1">
+          <linearGradient id="nexus-metal" x1="0" y1="0" x2="0.15" y2="1">
             <stop offset="0" stopColor="#FFFFFF" />
-            <stop offset=".48" stopColor="#AEBBD0" />
-            <stop offset="1" stopColor="#F7FAFF" />
+            <stop offset=".52" stopColor="#DCE5F3" />
+            <stop offset="1" stopColor="#8798B2" />
           </linearGradient>
           <linearGradient id="nexus-energy" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stopColor="#19D5D2" />
-            <stop offset=".52" stopColor="#398BFF" />
-            <stop offset="1" stopColor="#7658F5" />
+            <stop offset="0" stopColor="#00E5E8" />
+            <stop offset=".48" stopColor="#20B8FF" />
+            <stop offset="1" stopColor="#B000FF" />
           </linearGradient>
-          <filter id="nexus-glow" x="-30%" y="-30%" width="160%" height="160%">
-            <feGaussianBlur stdDeviation="2.2" result="blur" />
+          <filter id="nexus-glow" x="-30%" y="-40%" width="160%" height="180%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
             <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
           </filter>
         </defs>
-        <path d="M8 17 Q29 -2 54 12" fill="none" stroke="url(#nexus-energy)" strokeWidth="2.4" strokeLinecap="round" filter="url(#nexus-glow)" />
-        <path d="M12 22 L29 39 L46 22 M28 22 L45 39 L62 22" fill="none" stroke="url(#nexus-energy)" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
-        {!compact && <>
-          <text x="72" y="34" fill="url(#nexus-metal)" fontSize="29" fontWeight="800" fontStyle="italic" letterSpacing="3">NEXUS</text>
-          <path d="M73 43 H239" stroke="url(#nexus-energy)" strokeWidth="1.8" strokeLinecap="round" />
-          <text x="74" y="54" fill="#91A1C1" fontSize="7.5" fontWeight="700" letterSpacing="2.5">CONTROL ROOM</text>
-        </>}
+        {compact ? (
+          <g fill="none" stroke="url(#nexus-energy)" strokeWidth="7" strokeLinejoin="miter" filter="url(#nexus-glow)">
+            <path d="M8 13 L36 48 L64 13" />
+            <path d="M25 13 L53 48 L74 22" />
+          </g>
+        ) : (
+          <>
+            <path d="M38 31 C105 -6 227 -5 286 31" fill="none" stroke="url(#nexus-energy)" strokeWidth="3.2" filter="url(#nexus-glow)" />
+            <text x="8" y="68" fill="url(#nexus-metal)" fontSize="57" fontWeight="900" fontStyle="italic" letterSpacing="1.2" fontFamily="Arial, Helvetica, sans-serif">NEXUS</text>
+            <g fill="none" stroke="url(#nexus-energy)" strokeWidth="5" strokeLinejoin="miter" filter="url(#nexus-glow)">
+              <path d="M267 35 L302 55 L267 79" />
+              <path d="M291 35 L326 55 L291 79" />
+            </g>
+            <path d="M5 84 H278 L303 66" fill="none" stroke="url(#nexus-energy)" strokeWidth="2.6" filter="url(#nexus-glow)" />
+          </>
+        )}
       </svg>
     </div>
   );
