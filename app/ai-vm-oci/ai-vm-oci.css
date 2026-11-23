@@ -244,3 +244,100 @@
   .ai-vm-oci-route .vmoci-pagination { margin-top: 2px; font-size: 6px; }
   .ai-vm-oci-route .vmoci-pagination button { padding: 2px 4px; font-size: 6px; }
 }
+
+
+/* Hard viewport containment: the shared Nexus shell otherwise grows to content height. */
+@media (min-width: 1100px) and (min-height: 700px) {
+  html:has(main.control-room.ai-vm-oci-route),
+  body:has(main.control-room.ai-vm-oci-route) {
+    height: 100dvh !important;
+    min-height: 0 !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+  }
+  main.control-room.ai-vm-oci-route {
+    display: grid !important;
+    grid-template-columns: 264px minmax(0, 1fr) !important;
+    grid-template-rows: minmax(0, 1fr) !important;
+    width: 100% !important;
+    height: 100dvh !important;
+    min-height: 0 !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+    align-items: stretch !important;
+  }
+  main.control-room.ai-vm-oci-route > .nexus-sidebar {
+    height: 100dvh !important;
+    min-height: 0 !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+  }
+  main.control-room.ai-vm-oci-route > section.workspace.ai-vm-oci-workspace {
+    grid-column: 2;
+    grid-row: 1;
+    width: 100% !important;
+    height: 100dvh !important;
+    min-height: 0 !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+    padding: 8px 16px !important;
+    box-sizing: border-box !important;
+  }
+  main.control-room.ai-vm-oci-route .vmoci-main {
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 5px !important;
+    overflow: hidden !important;
+  }
+  main.control-room.ai-vm-oci-route .vmoci-header,
+  main.control-room.ai-vm-oci-route .vmoci-notice,
+  main.control-room.ai-vm-oci-route .vmoci-tabs,
+  main.control-room.ai-vm-oci-route .vmoci-kpis { flex: 0 0 auto !important; }
+  main.control-room.ai-vm-oci-route .vmoci-header { margin: 0 !important; }
+  main.control-room.ai-vm-oci-route .vmoci-header h1 { font-size: 18px !important; margin: 2px 0 !important; }
+  main.control-room.ai-vm-oci-route .vmoci-header p { font-size: 9px !important; }
+  main.control-room.ai-vm-oci-route .vmoci-notice { margin: 0 !important; padding: 5px 8px !important; font-size: 8px !important; line-height: 1.2 !important; }
+  main.control-room.ai-vm-oci-route .vmoci-tabs { margin: 0 !important; gap: 5px !important; }
+  main.control-room.ai-vm-oci-route .vmoci-tabs button { padding: 5px 7px !important; }
+  main.control-room.ai-vm-oci-route .vmoci-kpis { margin: 0 !important; gap: 6px !important; }
+  main.control-room.ai-vm-oci-route .vmoci-kpis article { padding: 6px 8px !important; gap: 2px !important; }
+  main.control-room.ai-vm-oci-route .vmoci-kpis article strong { font-size: 16px !important; }
+  main.control-room.ai-vm-oci-route .vmoci-grid {
+    flex: 1 1 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    gap: 6px !important;
+    grid-template-columns: minmax(0, 1.15fr) minmax(220px, .85fr) !important;
+  }
+  main.control-room.ai-vm-oci-route .vmoci-panel { min-height: 0 !important; padding: 7px 9px !important; }
+  main.control-room.ai-vm-oci-route .vmoci-panel-head { margin-bottom: 3px !important; }
+  main.control-room.ai-vm-oci-route .vmoci-panel-head h2,
+  main.control-room.ai-vm-oci-route .vmoci-operator h2 { font-size: 10px !important; }
+  main.control-room.ai-vm-oci-route .vmoci-health-row { padding: 3px 0 !important; font-size: 8px !important; }
+  main.control-room.ai-vm-oci-route .vmoci-health-row b { font-size: 7px !important; }
+  main.control-room.ai-vm-oci-route .vmoci-operator p { font-size: 8px !important; line-height: 1.2 !important; margin: 3px 0 !important; }
+  main.control-room.ai-vm-oci-route .vmoci-policy { padding: 3px 0 !important; font-size: 8px !important; }
+  main.control-room.ai-vm-oci-route .vmoci-resource-panel {
+    flex: 0 0 auto !important;
+    height: 112px !important;
+    max-height: 112px !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: 5px 8px !important;
+  }
+  main.control-room.ai-vm-oci-route .vmoci-resource-panel .vmoci-panel-head { margin: 0 0 1px !important; }
+  main.control-room.ai-vm-oci-route .vmoci-resource-panel .vmoci-panel-head h2 { font-size: 9px !important; }
+  main.control-room.ai-vm-oci-route .vmoci-table-tools { margin: 0 0 1px !important; font-size: 7px !important; }
+  main.control-room.ai-vm-oci-route .vmoci-table-tools input { padding: 2px 4px !important; font-size: 7px !important; }
+  main.control-room.ai-vm-oci-route .vmoci-table-wrap { overflow: hidden !important; }
+  main.control-room.ai-vm-oci-route .vmoci-table-wrap table { min-width: 0 !important; table-layout: fixed !important; font-size: 7px !important; }
+  main.control-room.ai-vm-oci-route .vmoci-table-wrap th,
+  main.control-room.ai-vm-oci-route .vmoci-table-wrap td { padding: 2px 4px !important; font-size: 7px !important; }
+  main.control-room.ai-vm-oci-route .vmoci-pagination { margin-top: 1px !important; font-size: 6px !important; }
+  main.control-room.ai-vm-oci-route .vmoci-pagination button { padding: 1px 3px !important; font-size: 6px !important; }
+}
