@@ -108,17 +108,32 @@ export default function AiVmOciClient() {
             </>
           ) : config && (
             <section className="vmoci-panel vmoci-section-panel">
-              <div className="vmoci-panel-head"><div><span className="vmoci-eyebrow">{config.eyebrow}</span><h2>{config.title}</h2></div><span className="vmoci-tag amber">INTEGRATION PENDING</span></div>
+              <div className="vmoci-panel-head"><div><span className="vmoci-eyebrow">{config.eyebrow}</span><h2>{config.title}</h2></div><span className={`vmoci-tag ${snapshot?.status === "reported" && active !== "monitoring" ? "neutral" : "amber"}`}>{snapshot?.status === "reported" && active !== "monitoring" ? "SNAPSHOT DATA" : "NOT ESTABLISHED"}</span></div>
               <p className="vmoci-module-intro">{config.description}</p>
               <div className="vmoci-placeholder-grid">
-                <article><span>DATA SOURCE</span><strong>Not connected</strong><small>Belum ada pembacaan live</small></article>
-                <article><span>LAST REFRESH</span><strong>—</strong><small>Timestamp belum tersedia</small></article>
-                <article><span>ACCESS SCOPE</span><strong>Read-only target</strong><small>Compartment dan permission diverifikasi di P4</small></article>
+                <article><span>DATA SOURCE</span><strong>{snapshot?.status === "reported" && active !== "monitoring" ? "GitHub OCI report" : "Not connected"}</strong><small>{snapshot?.source || "OCI telemetry not available"}</small></article>
+                <article><span>LAST OBSERVED</span><strong>{snapshot?.observedAt || "—"}</strong><small>{snapshot?.region || "Region not reported"}</small></article>
+                <article><span>ACCESS SCOPE</span><strong>{snapshot?.coverage?.compartmentsChecked ?? "—"} compartments</strong><small>{snapshot?.coverage?.note || "Scope not established"}</small></article>
               </div>
               <div className="vmoci-module-table">
-                <div className="vmoci-table-wrap"><table><thead><tr>{config.columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody><tr><td colSpan={config.columns.length} className="vmoci-empty"><strong>{config.emptyTitle}</strong><span>{config.emptyDescription}</span></td></tr></tbody></table></div>
+                <div className="vmoci-table-wrap"><table><thead><tr>{config.columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>
+                  {active === "compute" && snapshot?.status === "reported" && <tr><td>Controller VM discovery</td><td>{snapshot.coverage?.compartmentsChecked ?? "—"} checked</td><td>Not reported</td><td>{snapshot.compute?.discovery ?? "NOT REPORTED"}</td><td>{snapshot.observedAt ?? "—"}</td></tr>}
+                  {active === "network" && snapshot?.status === "reported" && <>
+                    <tr><td>Controller VCN</td><td>{snapshot.region ?? "—"}</td><td>—</td><td>{snapshot.network?.vcn ?? "NOT REPORTED"}</td><td>{snapshot.observedAt ?? "—"}</td></tr>
+                    <tr><td>Controller subnet</td><td>{snapshot.region ?? "—"}</td><td>—</td><td>{snapshot.network?.subnet ?? "NOT REPORTED"}</td><td>{snapshot.observedAt ?? "—"}</td></tr>
+                    <tr><td>SSH ingress exposure</td><td>Security lists</td><td>NSGs not inspected</td><td>{snapshot.network?.sshIngress ?? "NOT REPORTED"}</td><td>{snapshot.observedAt ?? "—"}</td></tr>
+                  </>}
+                  {active === "functions" && snapshot?.status === "reported" && <tr><td>Functions lifecycle</td><td>{snapshot.functions?.application ?? "—"}</td><td>Invocation metrics unavailable</td><td>{snapshot.functions?.active ?? "NOT REPORTED"}</td><td>{snapshot.observedAt ?? "—"}</td></tr>}
+                  {active === "storage" && snapshot?.status === "reported" && (snapshot.storage?.buckets ?? []).map((bucket: {name:string;state:string}) => <tr key={bucket.name}><td>{bucket.name}</td><td>Object Storage</td><td>{snapshot.region ?? "—"}</td><td>{bucket.state}</td><td>{snapshot.observedAt ?? "—"}</td></tr>)}
+                  {active === "monitoring" && <tr><td colSpan={config.columns.length} className="vmoci-empty"><strong>{config.emptyTitle}</strong><span>{config.emptyDescription}</span></td></tr>}
+                  {active === "compute" && snapshot?.status === "reported" && <tr><td colSpan={config.columns.length} className="vmoci-empty"><strong>{snapshot.compute?.recordsExamined ?? "0"} compute records examined</strong><span>Discovery hanya mencakup compartment yang dapat diakses. Hasil NOT_FOUND bukan bukti bahwa tidak ada VM di seluruh tenancy.</span></td></tr>}
+                  {active === "storage" && snapshot?.status === "reported" && !(snapshot.storage?.buckets ?? []).length && <tr><td colSpan={config.columns.length} className="vmoci-empty">Tidak ada bucket yang dilaporkan pada snapshot ini.</td></tr>}
+                  {snapshot?.status !== "reported" && active !== "monitoring" && <tr><td colSpan={config.columns.length} className="vmoci-empty"><strong>{config.emptyTitle}</strong><span>{snapshotError || "Snapshot OCI belum tersedia. Tidak ada nilai yang diasumsikan."}</span></td></tr>}
+                </tbody></table></div>
               </div>
-              {active === "monitoring" && <div className="vmoci-recovery-note">Recovery controls disabled. P5 akan menyiapkan gateway, approval gate, audit trail, dan post-action verification. Grok AI Agent tetap tahap terakhir.</div>}
+              {active === "functions" && <div className="vmoci-recovery-note">{snapshot?.functions?.note || "Lifecycle ACTIVE bukan bukti endpoint sehat; invocation dan metrik belum diperiksa."}</div>}
+              {active === "storage" && <div className="vmoci-recovery-note">{snapshot?.storage?.note || "Metadata bucket saja; isi objek dan lifecycle belum diperiksa."}</div>}
+              {active === "monitoring" && <div className="vmoci-recovery-note">Monitoring live belum terhubung. Health tetap NOT ESTABLISHED; tidak ada metrik, alarm, atau log yang diklaim tersedia. Recovery controls disabled.</div>}
             </section>
           )}
 
