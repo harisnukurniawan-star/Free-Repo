@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import DatabaseSidebar from "@/app/components/DatabaseSidebar";
 import "./ai-vm-oci.css";
 
@@ -37,6 +37,23 @@ export default function AiVmOciClient() {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Resource | null>(null);
   const [page, setPage] = useState(1);
+  const [snapshot, setSnapshot] = useState<any>(null);
+  const [snapshotLoading, setSnapshotLoading] = useState(true);
+  const [snapshotError, setSnapshotError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/oci/snapshot", { cache: "no-store" })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || `Snapshot API HTTP ${response.status}`);
+        return data;
+      })
+      .then((data) => { if (!cancelled) setSnapshot(data); })
+      .catch((error) => { if (!cancelled) setSnapshotError(error instanceof Error ? error.message : "Snapshot unavailable"); })
+      .finally(() => { if (!cancelled) setSnapshotLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
   const filtered = useMemo(() => resources.filter((item) => (item.name + " " + item.type + " " + item.state).toLowerCase().includes(query.toLowerCase())), [query]);
   const pageSize = 4;
   const visible = filtered.slice((page - 1) * pageSize, page * pageSize);
@@ -71,8 +88,14 @@ export default function AiVmOciClient() {
               </div>
               <div className="vmoci-grid">
                 <section className="vmoci-panel vmoci-health">
-                  <div className="vmoci-panel-head"><div><span className="vmoci-eyebrow">SERVICE STATUS</span><h2>Infrastructure health</h2></div><span className="vmoci-tag amber">NOT VERIFIED</span></div>
-                  {["Compute & VM", "Network & Bastion", "Functions", "Storage & Database", "Monitoring"].map((name) => <div className="vmoci-health-row" key={name}><span>{name}</span><b>Pending source validation</b></div>)}
+                  <div className="vmoci-panel-head"><div><span className="vmoci-eyebrow">SERVICE STATUS</span><h2>Infrastructure health</h2></div><span className="vmoci-tag amber">{snapshot?.status === "reported" ? "SNAPSHOT ONLY" : "NOT VERIFIED"}</span></div>
+                  {[
+                    ["Compute & VM", snapshot?.compute?.discovery ?? "Awaiting report"],
+                    ["Network & Bastion", snapshot?.network?.vcn ?? "Awaiting report"],
+                    ["Functions", snapshot?.functions?.active ?? "Awaiting report"],
+                    ["Storage & Database", snapshot?.storage?.buckets?.length != null ? `${snapshot.storage.buckets.length} buckets reported` : "Awaiting report"],
+                    ["Monitoring", "NOT ESTABLISHED"],
+                  ].map(([name, state]) => <div className="vmoci-health-row" key={name}><span>{name}</span><b>{state}</b></div>)}
                 </section>
                 <section className="vmoci-panel vmoci-operator">
                   <span className="vmoci-eyebrow">CONTROL POLICY</span><h2>Safe operations first</h2>
