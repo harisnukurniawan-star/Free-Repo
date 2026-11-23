@@ -137,7 +137,7 @@ export default function AiVmOciClient() {
             </section>
           )}
 
-          <section className="vmoci-panel vmoci-resource-panel">
+          {active === "overview" && (<section className="vmoci-panel vmoci-resource-panel">
             <div className="vmoci-panel-head"><div><span className="vmoci-eyebrow">REFERENSI INFRASTRUKTUR</span><h2>Referensi Sumber Daya</h2></div><span className="vmoci-tag neutral">DATA LAMA / BELUM TERVERIFIKASI</span></div>
             <div className="vmoci-table-tools"><span>Referensi terdahulu · bukan inventaris langsung</span><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Cari sumber daya..." aria-label="Cari sumber daya" /></div>
             <div className="vmoci-table-wrap"><table><thead><tr><th>Sumber Daya</th><th>Jenis</th><th>Status Tercatat</th><th>Sumber Data</th><th>Detail</th></tr></thead><tbody>
@@ -145,7 +145,7 @@ export default function AiVmOciClient() {
               {visible.length === 0 && <tr><td colSpan={5} className="vmoci-empty">No matching references.</td></tr>}
             </tbody></table></div>
             <div className="vmoci-pagination"><span>{filtered.length ? `Showing ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, filtered.length)} of ${filtered.length}` : "0 resources"}</span><div><button type="button" disabled={page <= 1} onClick={() => setPage(1)}>First</button><button type="button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>Previous</button><button type="button" disabled={page * pageSize >= filtered.length} onClick={() => setPage((value) => value + 1)}>Next</button></div></div>
-          </section>
+          </section>)}
         </div>
       </section>
 
