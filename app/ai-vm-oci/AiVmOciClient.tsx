@@ -70,8 +70,8 @@ export default function AiVmOciClient() {
           </header>
 
           <div className="vmoci-notice" role="status">
-            <strong>DEMO / INTEGRATION PENDING</strong>
-            <span>Angka dan status live belum tersedia. Referensi historis diberi label; data aktual baru ditampilkan setelah sumber, scope, dan timestamp tervalidasi pada P4.</span>
+            <strong>{snapshot?.status === "reported" ? "OCI REPORT CONNECTED" : snapshotLoading ? "CONNECTING OCI REPORT" : "OCI SOURCE NOT CONNECTED"}</strong>
+            <span>{snapshot?.status === "reported" ? `Read-only report · ${snapshot.region} · observed ${snapshot.observedAt} · ${snapshot.source}. Dated metadata snapshot, not continuous live telemetry.` : snapshotError || "Menunggu konfigurasi OCI_GITHUB_READ_TOKEN pada server untuk membaca laporan privat."}</span>
           </div>
 
           <nav className="vmoci-tabs" aria-label="AI VM-OCI sections">
@@ -81,10 +81,10 @@ export default function AiVmOciClient() {
           {active === "overview" ? (
             <>
               <div className="vmoci-kpis">
-                <article><span>COMPUTE</span><strong>—</strong><small>Live inventory not connected</small></article>
-                <article><span>NETWORK</span><strong>—</strong><small>Live inventory not connected</small></article>
-                <article><span>FUNCTIONS</span><strong>—</strong><small>Invocation metrics unavailable</small></article>
-                <article><span>STORAGE & DB</span><strong>—</strong><small>Health checks unavailable</small></article>
+                <article><span>COMPUTE</span><strong>{snapshot?.compute?.recordsExamined ?? "—"}</strong><small>{snapshot?.compute?.discovery ?? "Report unavailable"}</small></article>
+                <article><span>NETWORK</span><strong>{snapshot?.network?.vcn ?? "—"}</strong><small>{snapshot?.network?.subnet ?? "Report unavailable"}</small></article>
+                <article><span>FUNCTIONS</span><strong>{snapshot?.functions?.active ?? "—"}</strong><small>Lifecycle metadata only</small></article>
+                <article><span>STORAGE</span><strong>{snapshot?.storage?.buckets?.length ?? "—"}</strong><small>Reported bucket metadata</small></article>
               </div>
               <div className="vmoci-grid">
                 <section className="vmoci-panel vmoci-health">
