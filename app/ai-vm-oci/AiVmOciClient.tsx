@@ -9,12 +9,12 @@ type Resource = { name: string; type: string; state: string; detail: string; sou
 type ModuleConfig = { title: string; eyebrow: string; description: string; columns: string[]; emptyTitle: string; emptyDescription: string };
 
 const sections: { id: Section; label: string; short: string }[] = [
-  { id: "overview", label: "Overview", short: "Summary" },
-  { id: "compute", label: "Compute", short: "VM & instances" },
-  { id: "network", label: "Network & Bastion", short: "VCN & access" },
-  { id: "functions", label: "Functions", short: "Serverless" },
-  { id: "storage", label: "Storage & Database", short: "Buckets & DB" },
-  { id: "monitoring", label: "Monitoring & Recovery", short: "Health & actions" },
+  { id: "overview", label: "Overview", short: "Ringkasan" },
+  { id: "compute", label: "Compute", short: "VM & instance" },
+  { id: "network", label: "Network & Bastion", short: "VCN & akses" },
+  { id: "functions", label: "Functions", short: "Layanan serverless" },
+  { id: "storage", label: "Storage & Database", short: "Bucket & database" },
+  { id: "monitoring", label: "Monitoring & Recovery", short: "Kesehatan & pemulihan" },
 ];
 
 const moduleConfig: Record<Exclude<Section, "overview">, ModuleConfig> = {
